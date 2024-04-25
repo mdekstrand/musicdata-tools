@@ -1,0 +1,6 @@
+outs:
+- md5: fd4b2489b8ffd93f66bc67829628b9c8.dir
+  size: 16712689876
+  nfiles: 12
+  hash: md5
+  path: musicbrainz
