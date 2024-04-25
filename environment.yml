@@ -11,6 +11,8 @@ dependencies:
   - dvc=3
   - dvc-s3
   - dvc-webdav
+  - pyyaml
+  - libarchive=3
   - python-duckdb=0.10
   - duckdb-cli=0.10
   - enlighten~=1.12
