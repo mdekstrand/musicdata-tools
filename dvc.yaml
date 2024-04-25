@@ -1,0 +1,10 @@
+stages:
+  import-musicbrainz:
+    cmd: python ingest.py --musicbrainz
+    deps:
+    - sql/mb_artist.sql
+    - sql/mb_recording.sql
+    - source/musicbrainz/artist.tar.xz
+    - source/musicbrainz/recording.tar.xz
+    outs:
+    - data/musicbrainz.db

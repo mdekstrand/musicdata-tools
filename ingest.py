@@ -16,33 +16,24 @@ Modes:
 """
 
 import logging
-import os
-import re
-from pathlib import Path
 
 from docopt import ParsedOptions, docopt
-from duckdb import DuckDBPyConnection
 from sandal.cli import setup_logging
-from yaml import safe_load
 
 from musicdata import musicbrainz
+from musicdata.layout import data_dir
 
 _log = logging.getLogger("ingest")
-
-MB_TABLES = [
-    "artist",
-    "recording",
-]
-
-sql_dir = Path("sql")
-mb_dir = Path("data/musicbrainz")
-db_path = Path("data/musicbrainz.db")
 
 
 def main(args: ParsedOptions):
     setup_logging(args["--verbose"])
 
+    _log.info("ensuring data directory exists")
+    data_dir.mkdir(exist_ok=True)
+
     if args["--musicbrainz"]:
+        _log.info("starting MusicBrainz import")
         musicbrainz.import_mb(args["--part"])
 
 
