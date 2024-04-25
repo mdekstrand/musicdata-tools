@@ -1,6 +1,7 @@
 __pycache__
 *.pyc
 *.pyo
+*.wal
 
 *.log
 perf_data*/
