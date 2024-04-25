@@ -22,7 +22,7 @@ import sys
 from docopt import ParsedOptions, docopt
 from sandal.cli import setup_logging
 
-from musicdata import musicbrainz
+from musicdata import mlhd, musicbrainz
 from musicdata.layout import data_dir
 
 _log = logging.getLogger("ingest")
@@ -37,6 +37,9 @@ def main(args: ParsedOptions):
     if args["--musicbrainz"]:
         _log.info("starting MusicBrainz import")
         musicbrainz.import_mb(args["--part"])
+    elif args["--mlhd"]:
+        _log.info("starting MLHD+ import")
+        mlhd.import_mlhd()
     else:
         _log.error("no valid action specified")
         sys.exit(2)
