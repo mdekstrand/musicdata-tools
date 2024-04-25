@@ -24,6 +24,7 @@ def import_mb(table: Optional[str]):
     with connect(os.fspath(db_fn)) as db, TemporaryDirectory(
         prefix="music-import-"
     ) as tmp:
+        tmp = Path(tmp)
         for table in tables:
             import_table(db, table, tmp)
 

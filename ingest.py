@@ -17,6 +17,7 @@ Modes:
 """
 
 import logging
+import sys
 
 from docopt import ParsedOptions, docopt
 from sandal.cli import setup_logging
@@ -36,6 +37,9 @@ def main(args: ParsedOptions):
     if args["--musicbrainz"]:
         _log.info("starting MusicBrainz import")
         musicbrainz.import_mb(args["--part"])
+    else:
+        _log.error("no valid action specified")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
