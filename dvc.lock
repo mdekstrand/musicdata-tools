@@ -1,0 +1,26 @@
+schema: '2.0'
+stages:
+  import-musicbrainz:
+    cmd: python ingest.py --musicbrainz
+    deps:
+    - path: source/musicbrainz/artist.tar.xz
+      hash: md5
+      md5: 1d24ebd7242722c349e34bbbc9cb9bc4
+      size: 1232899396
+    - path: source/musicbrainz/recording.tar.xz
+      hash: md5
+      md5: 4d60aab2b5d27ad15a1d81b154f61b17
+      size: 39490704
+    - path: sql/mb_artist.sql
+      hash: md5
+      md5: b2391156d371ec0ab87e42e1b3815524
+      size: 181
+    - path: sql/mb_recording.sql
+      hash: md5
+      md5: a977cd15b868032905db53dafc043590
+      size: 164
+    outs:
+    - path: data/musicbrainz.db
+      hash: md5
+      md5: 215df73d559d91bb04c5d965fe25a673
+      size: 1055404032
