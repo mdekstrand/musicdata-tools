@@ -16,9 +16,12 @@ dependencies:
   - python-duckdb=0.10
   - duckdb-cli=0.10
   - enlighten~=1.12
+  - pyzmq==26.*
   - pip:
     - docopt-ng>=0.9
     - sandal>=0.1.0a3
+    - progress-api>=0.1.0a5
+    - manylog>=0.1.0a2
 platforms:
 - linux-64
 - osx-arm64
