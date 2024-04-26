@@ -8,3 +8,10 @@ stages:
     - source/musicbrainz/recording.tar.xz
     outs:
     - data/musicbrainz.db
+
+  import-mlhd:
+    cmd: python ingest.py --mlhd
+    deps:
+    - source/mlhdplus
+    outs:
+    - data/mlhd
