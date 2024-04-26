@@ -20,7 +20,7 @@ dependencies:
   - humanize
   - pip:
     - docopt-ng>=0.9
-    - sandal>=0.1.0a3
+    - sandal>=0.1.0a4
     - progress-api>=0.1.0a4
     - manylog>=0.1.0a3
 platforms:
