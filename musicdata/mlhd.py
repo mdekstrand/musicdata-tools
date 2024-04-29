@@ -81,6 +81,7 @@ def import_file(file: Path):
                     rec.finish()
                 _log.info("parsing segment %s", entry.name)
                 rec = SegmentRecorder(entry.name)
+                rec.start()
                 continue
 
             m = _MLHD_FN_RE.match(entry.name)
@@ -100,6 +101,7 @@ def import_file(file: Path):
                 )
 
             assert rec is not None, "user encountered but no recorder"
+            assert rec.is_alive(), "recorder thread has died"
             rec.record_user(uid, tbl)
 
         pb.update(srcf.tell() - pos)
@@ -152,7 +154,27 @@ class SegmentRecorder(Thread):
             return
 
         uid, tbl = item
+        tbl = self._convert_and_write_user(db, uid, tbl)
+        self._write_user(tbl)
+
+    def _convert_and_write_user(
+        self, db: duckdb.DuckDBPyConnection, uid: str, tbl: pa.Table
+    ) -> pa.Table:
+        _log.debug("recording user %s", uid)
+        src = db.from_arrow(tbl)
+        proj = db.sql(f"""
+            SELECT CAST('{uid}' AS UUID) AS user_id,
+                timestamp,
+                CAST(string_split(artist_ids, ',') AS UUID[]) AS artist_ids,
+                CAST(release_id AS UUID) AS release_id,
+                CAST(rec_id AS UUID) AS rec_id
+            FROM src
+        """)
+        return proj.to_arrow_table()
+
+    def _write_user(self, tbl: pa.Table):
         if self.writer is None:
+            _log.debug("creating output file %s with schema %s", self.file, tbl.schema)
             self.writer = ParquetWriter(
                 os.fspath(self.file),
                 compression="zstd",  # type: ignore
@@ -160,19 +182,4 @@ class SegmentRecorder(Thread):
                 schema=tbl.schema,
             )
 
-        self._convert_and_write_user(db, uid, tbl)
-
-    def _convert_and_write_user(self, db, uid, tbl):
-        _log.debug("recording user %s", uid)
-        tbl = db.from_arrow(tbl)
-        proj = db.sql(f"""
-            SELECT CAST('{uid}' AS UUID) AS user_id,
-                timestamp,
-                CAST(string_split(artist_ids, ',') AS UUID[]) AS artist_ids,
-                CAST(release_id AS UUID) AS release_id,
-                CAST(rec_id AS UUID) AS rec_id
-            FROM tbl
-        """)
-        out = proj.to_arrow_table()
-        assert self.writer is not None
-        self.writer.write_table(out)
+        self.writer.write_table(tbl)
