@@ -5,13 +5,17 @@ import re
 import tarfile
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from queue import Queue
+from threading import Thread
 
 import duckdb
+import pyarrow as pa
 import pyarrow.csv as csv
 import zstandard
 from humanize import naturalsize
 from manylog import LogListener, init_worker_logging
 from progress_api import make_progress
+from pyarrow.parquet import ParquetWriter
 
 from .layout import data_dir, mlhd_src_dir
 
@@ -71,9 +75,9 @@ def import_file(file: Path):
             pos = srcf.tell()
             pb.update(pos - old)
             if entry.isdir():
-                _log.info("parsing segment %s", entry.name)
                 if rec:
                     rec.save()
+                _log.info("parsing segment %s", entry.name)
                 rec = SegmentRecorder(entry.name)
                 continue
 
@@ -91,12 +95,7 @@ def import_file(file: Path):
                     csv.ParseOptions(delimiter="\t"),
                 )
 
-            tbl = rec.db.from_arrow(tbl)
-            proj = rec.db.sql(
-                f"select '{uid}', timestamp, string_split(artist_ids, ','), release_id, rec_id from tbl"
-            )
-            proj.insert_into("events")
-            _log.debug("inserted user %s", uid)
+            rec.record_user(uid, tbl)
 
         pb.update(srcf.tell() - pos)
         rec.save()
@@ -110,21 +109,54 @@ class SegmentRecorder:
 
     def __init__(self, segment):
         self.segment = segment
+        self.thread = WriterThread(segment)
+        self.thread.start()
         self.db = duckdb.connect()
-        self.db.execute("""
-            CREATE TABLE events (
-                user_id UUID NOT NULL,
-                timestamp BIGINT NOT NULL,
-                artist_ids UUID[],
-                release_id UUID,
-                rec_id UUID
-            )
-        """)
         self.db.execute("PRAGMA disable_progress_bar")
+
+    def record_user(self, uid, tbl):
+        _log.debug("recording user %s", uid)
+        tbl = self.db.from_arrow(tbl)
+        proj = self.db.sql(f"""
+            SELECT CAST('{uid}' AS UUID) AS user_id,
+                timestamp,
+                CAST(string_split(artist_ids, ',') AS UUID[]) AS artist_ids,
+                CAST(release_id AS UUID) AS release_id,
+                CAST(rec_id AS UUID) AS rec_id
+            FROM tbl
+        """)
+        out = proj.to_arrow_table()
+        self.thread.queue.put(out)
 
     def save(self):
         outf = out_dir / f"{self.segment}.parquet"
-        _log.info("saving %s", outf)
-        self.db.table("events").write_parquet(os.fspath(outf), compression="zstd")
+        _log.info("finishing %s", outf)
+        self.thread.queue.put(None)
+        _log.debug("waiting for writer thread")
+        self.thread.join()
         self.db.close()
-        del self.db
+        del self.db, self.thread
+
+
+class WriterThread(Thread):
+    file: Path
+    writer: ParquetWriter
+    queue: Queue[pa.Table | None]
+
+    def __init__(self, segment):
+        self.file = out_dir / f"{segment}.parquet"
+        _log.info("opening output file %s", self.file)
+        self.writer = ParquetWriter(
+            os.fspath(self.file), compression="zstd", compression_level=9
+        )
+        self.queue = Queue(10)
+
+    def run(self):
+        while True:
+            item = self.queue.get()
+            if item is None:
+                _log.info("finishing output file %s", self.file)
+                self.writer.close()
+                return
+
+            self.writer.write_table(item)
