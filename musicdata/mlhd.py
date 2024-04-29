@@ -19,6 +19,7 @@ from pyarrow.parquet import ParquetWriter
 
 from .layout import data_dir, mlhd_src_dir
 
+BATCH_SIZE = 50_000_000
 _MLHD_FN_RE = re.compile(r"^[a-f0-9]+/([a-f0-9-]+)\.txt\.zst")
 _log = logging.getLogger(__name__)
 
@@ -116,6 +117,7 @@ class SegmentRecorder(Thread):
     queue: Queue[tuple[str, pa.Table] | None]
     file: Path
     writer: ParquetWriter | None = None
+    chunks: int
 
     def __init__(self, segment):
         self.segment = segment
@@ -123,6 +125,7 @@ class SegmentRecorder(Thread):
         self.file = out_dir / f"{segment}.parquet"
         _log.info("opening output file %s", self.file)
         self.queue = Queue(10)
+        self.chunks = 0
 
     def record_user(self, uid, tbl):
         self.queue.put((uid, tbl))
@@ -137,6 +140,15 @@ class SegmentRecorder(Thread):
     def run(self):
         with duckdb.connect() as db:
             db.execute("PRAGMA disable_progress_bar")
+            db.execute("""
+                CREATE TABLE events (
+                    user_id UUID NOT NULL,
+                    timestamp BIGINT NOT NULL,
+                    artist_ids UUID[],
+                    release_id UUID,
+                    rec_id UUID
+                )
+            """)
 
             while True:
                 try:
@@ -149,30 +161,38 @@ class SegmentRecorder(Thread):
         item = self.queue.get()
         if item is None:
             _log.info("finishing output file %s", self.file)
+            self._maybe_write(db, True)
             if self.writer is not None:
                 self.writer.close()
             return
 
         uid, tbl = item
-        tbl = self._convert_and_write_user(db, uid, tbl)
-        self._write_user(tbl)
+        self._record_user_events(db, uid, tbl)
+        self._maybe_write(db)
 
-    def _convert_and_write_user(
+    def _record_user_events(
         self, db: duckdb.DuckDBPyConnection, uid: str, tbl: pa.Table
-    ) -> pa.Table:
+    ) -> None:
         _log.debug("recording user %s", uid)
         src = db.from_arrow(tbl)
-        proj = db.sql(f"""
-            SELECT CAST('{uid}' AS UUID) AS user_id,
-                timestamp,
-                CAST(string_split(artist_ids, ',') AS UUID[]) AS artist_ids,
-                CAST(release_id AS UUID) AS release_id,
-                CAST(rec_id AS UUID) AS rec_id
-            FROM src
-        """)
-        return proj.to_arrow_table()
+        proj = db.sql(
+            f"select '{uid}', timestamp, string_split(artist_ids, ','), release_id, rec_id from src"
+        )
+        proj.insert_into("events")
 
-    def _write_user(self, tbl: pa.Table):
+    def _maybe_write(self, db: duckdb.DuckDBPyConnection, force: bool = False):
+        db.execute("SELECT COUNT(*) FROM events")
+        res = db.fetchone()
+        assert res is not None
+        (count,) = res
+
+        if count < BATCH_SIZE and not force:
+            return
+
+        if count == 0:
+            return
+
+        tbl = db.table("events").to_arrow_table()
         if self.writer is None:
             _log.debug("creating output file %s with schema %s", self.file, tbl.schema)
             self.writer = ParquetWriter(
@@ -182,4 +202,6 @@ class SegmentRecorder(Thread):
                 schema=tbl.schema,
             )
 
+        _log.debug("segment %s: writing %d rows", self.segment, tbl.num_rows)
         self.writer.write_table(tbl)
+        db.execute("TRUNCATE events")
