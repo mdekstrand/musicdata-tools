@@ -15,11 +15,10 @@ import zstandard
 from humanize import naturalsize
 from manylog import LogListener, init_worker_logging
 from progress_api import make_progress
-from pyarrow.parquet import ParquetWriter
 
 from .layout import data_dir, mlhd_src_dir
 
-BATCH_SIZE = 50_000_000
+BATCH_SIZE = 25_000_000
 _MLHD_FN_RE = re.compile(r"^[a-f0-9]+/([a-f0-9-]+)\.txt\.zst")
 _log = logging.getLogger(__name__)
 
@@ -115,7 +114,6 @@ def import_file(file: Path):
 class SegmentRecorder(Thread):
     segment: str
     queue: Queue[tuple[str, pa.Table] | None]
-    writer: ParquetWriter | None = None
     out_dir: Path
     chunks: int
 
@@ -152,23 +150,25 @@ class SegmentRecorder(Thread):
 
             while True:
                 try:
-                    self._pump_item(db)
+                    done = self._pump_item(db)
                 except Exception as e:
                     _log.error("segment %s: error in worker: %s", self.segment, e)
                     raise e
 
+                if done:
+                    return
+
     def _pump_item(self, db):
         item = self.queue.get()
         if item is None:
-            _log.info("finishing segment %s", self.segment)
+            _log.debug("writer finishing segment %s", self.segment)
             self._maybe_write(db, True)
-            if self.writer is not None:
-                self.writer.close()
-            return
+            return True
 
         uid, tbl = item
         self._record_user_events(db, uid, tbl)
         self._maybe_write(db)
+        return False
 
     def _record_user_events(
         self, db: duckdb.DuckDBPyConnection, uid: str, tbl: pa.Table
@@ -196,5 +196,5 @@ class SegmentRecorder(Thread):
         fn = self.out_dir / f"chunk-{self.chunks}.parquet"
 
         _log.debug("segment %s: writing %d rows to %s", self.segment, count, fn)
-        db.table("events").write_parquet(os.fspath(fn), "zstd")
+        db.table("events").write_parquet(os.fspath(fn), compression="zstd")
         db.execute("TRUNCATE events")
