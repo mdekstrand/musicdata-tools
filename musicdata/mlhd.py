@@ -115,29 +115,29 @@ def import_file(file: Path):
 class SegmentRecorder(Thread):
     segment: str
     queue: Queue[tuple[str, pa.Table] | None]
-    file: Path
     writer: ParquetWriter | None = None
+    out_dir: Path
     chunks: int
 
     def __init__(self, segment):
         self.segment = segment
         super().__init__(name=f"writer-{segment}")
-        self.file = out_dir / f"{segment}.parquet"
-        _log.info("opening output file %s", self.file)
         self.queue = Queue(10)
+        self.out_dir = out_dir / segment
         self.chunks = 0
 
     def record_user(self, uid, tbl):
         self.queue.put((uid, tbl))
 
     def finish(self):
-        outf = out_dir / f"{self.segment}.parquet"
-        _log.info("finishing %s", outf)
+        _log.info("finishing segment %s", self.segment)
         self.queue.put(None)
         _log.debug("waiting for writer thread")
         self.join()
 
     def run(self):
+        self.out_dir.mkdir(exist_ok=True, parents=True)
+
         with duckdb.connect() as db:
             db.execute("PRAGMA disable_progress_bar")
             db.execute("""
@@ -154,13 +154,13 @@ class SegmentRecorder(Thread):
                 try:
                     self._pump_item(db)
                 except Exception as e:
-                    _log.error("write %s: error in worker: %s", self.file, e)
+                    _log.error("segment %s: error in worker: %s", self.segment, e)
                     raise e
 
     def _pump_item(self, db):
         item = self.queue.get()
         if item is None:
-            _log.info("finishing output file %s", self.file)
+            _log.info("finishing segment %s", self.segment)
             self._maybe_write(db, True)
             if self.writer is not None:
                 self.writer.close()
@@ -174,7 +174,7 @@ class SegmentRecorder(Thread):
         self, db: duckdb.DuckDBPyConnection, uid: str, tbl: pa.Table
     ) -> None:
         _log.debug("recording user %s", uid)
-        src = db.from_arrow(tbl)
+        src = db.from_arrow(tbl)  # noqa: F841
         proj = db.sql(
             f"select '{uid}', timestamp, string_split(artist_ids, ','), release_id, rec_id from src"
         )
@@ -192,16 +192,9 @@ class SegmentRecorder(Thread):
         if count == 0:
             return
 
-        tbl = db.table("events").to_arrow_table()
-        if self.writer is None:
-            _log.debug("creating output file %s with schema %s", self.file, tbl.schema)
-            self.writer = ParquetWriter(
-                os.fspath(self.file),
-                compression="zstd",  # type: ignore
-                compression_level=9,
-                schema=tbl.schema,
-            )
+        self.chunks += 1
+        fn = self.out_dir / f"chunk-{self.chunks}.parquet"
 
-        _log.debug("segment %s: writing %d rows", self.segment, tbl.num_rows)
-        self.writer.write_table(tbl)
+        _log.debug("segment %s: writing %d rows to %s", self.segment, count, fn)
+        db.table("events").write_parquet(os.fspath(fn), "zstd")
         db.execute("TRUNCATE events")
