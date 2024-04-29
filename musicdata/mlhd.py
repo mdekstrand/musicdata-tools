@@ -18,7 +18,7 @@ from progress_api import make_progress
 
 from .layout import data_dir, mlhd_src_dir
 
-BATCH_SIZE = 25_000_000
+BATCH_SIZE = 20_000_000
 _MLHD_FN_RE = re.compile(r"^[a-f0-9]+/([a-f0-9-]+)\.txt\.zst")
 _log = logging.getLogger(__name__)
 
