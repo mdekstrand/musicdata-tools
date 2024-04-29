@@ -19,5 +19,6 @@
   },
   "[jsonnet]": {
     "editor.formatOnSave": true
-  }
+  },
+  "python.analysis.typeCheckingMode": "standard"
 }

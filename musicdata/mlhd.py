@@ -48,15 +48,17 @@ def import_mlhd(jobs: int | None = None):
             _log.info("finished file %s", file)
             fpb.update()
     else:
-        with LogListener() as ll, ProcessPoolExecutor(
-            jobs,
-            ctx,
-            initializer=init_worker_logging,
-            initargs=(ll.address, _log.getEffectiveLevel()),
-        ) as pool:
-            for file, res in zip(files, pool.map(import_file, files)):
-                _log.info("finished file %s", file)
-                fpb.update()
+        with LogListener() as ll:
+            assert ll.address is not None
+            with ProcessPoolExecutor(
+                jobs,
+                ctx,
+                initializer=init_worker_logging,
+                initargs=(ll.address, _log.getEffectiveLevel()),
+            ) as pool:
+                for file, res in zip(files, pool.map(import_file, files)):
+                    _log.info("finished file %s", file)
+                    fpb.update()
 
 
 def import_file(file: Path):
@@ -76,7 +78,7 @@ def import_file(file: Path):
             pb.update(pos - old)
             if entry.isdir():
                 if rec:
-                    rec.save()
+                    rec.finish()
                 _log.info("parsing segment %s", entry.name)
                 rec = SegmentRecorder(entry.name)
                 continue
@@ -86,7 +88,9 @@ def import_file(file: Path):
                 _log.warn("invalid filename: %s", entry.name)
                 continue
             uid = m[1]
-            with tf.extractfile(entry) as cstr, decomp.stream_reader(cstr) as data:
+            cstr = tf.extractfile(entry)
+            assert cstr is not None
+            with cstr, decomp.stream_reader(cstr) as data:
                 tbl = csv.read_csv(
                     data,
                     csv.ReadOptions(
@@ -95,29 +99,73 @@ def import_file(file: Path):
                     csv.ParseOptions(delimiter="\t"),
                 )
 
+            assert rec is not None, "user encountered but no recorder"
             rec.record_user(uid, tbl)
 
         pb.update(srcf.tell() - pos)
-        rec.save()
+        if rec is not None:
+            rec.finish()
 
     pb.finish()
 
 
-class SegmentRecorder:
+class SegmentRecorder(Thread):
     segment: str
-    db: duckdb.DuckDBPyConnection
+    queue: Queue[tuple[str, pa.Table] | None]
+    file: Path
+    writer: ParquetWriter | None = None
 
     def __init__(self, segment):
         self.segment = segment
-        self.thread = WriterThread(segment)
-        self.thread.start()
-        self.db = duckdb.connect()
-        self.db.execute("PRAGMA disable_progress_bar")
+        super().__init__(name=f"writer-{segment}")
+        self.file = out_dir / f"{segment}.parquet"
+        _log.info("opening output file %s", self.file)
+        self.queue = Queue(10)
 
     def record_user(self, uid, tbl):
+        self.queue.put((uid, tbl))
+
+    def finish(self):
+        outf = out_dir / f"{self.segment}.parquet"
+        _log.info("finishing %s", outf)
+        self.queue.put(None)
+        _log.debug("waiting for writer thread")
+        self.join()
+
+    def run(self):
+        with duckdb.connect() as db:
+            db.execute("PRAGMA disable_progress_bar")
+
+            while True:
+                try:
+                    self._pump_item(db)
+                except Exception as e:
+                    _log.error("write %s: error in worker: %s", self.file, e)
+                    raise e
+
+    def _pump_item(self, db):
+        item = self.queue.get()
+        if item is None:
+            _log.info("finishing output file %s", self.file)
+            if self.writer is not None:
+                self.writer.close()
+            return
+
+        uid, tbl = item
+        if self.writer is None:
+            self.writer = ParquetWriter(
+                os.fspath(self.file),
+                compression="zstd",  # type: ignore
+                compression_level=9,
+                schema=tbl.schema,
+            )
+
+        self._convert_and_write_user(db, uid, tbl)
+
+    def _convert_and_write_user(self, db, uid, tbl):
         _log.debug("recording user %s", uid)
-        tbl = self.db.from_arrow(tbl)
-        proj = self.db.sql(f"""
+        tbl = db.from_arrow(tbl)
+        proj = db.sql(f"""
             SELECT CAST('{uid}' AS UUID) AS user_id,
                 timestamp,
                 CAST(string_split(artist_ids, ',') AS UUID[]) AS artist_ids,
@@ -126,37 +174,5 @@ class SegmentRecorder:
             FROM tbl
         """)
         out = proj.to_arrow_table()
-        self.thread.queue.put(out)
-
-    def save(self):
-        outf = out_dir / f"{self.segment}.parquet"
-        _log.info("finishing %s", outf)
-        self.thread.queue.put(None)
-        _log.debug("waiting for writer thread")
-        self.thread.join()
-        self.db.close()
-        del self.db, self.thread
-
-
-class WriterThread(Thread):
-    file: Path
-    writer: ParquetWriter
-    queue: Queue[pa.Table | None]
-
-    def __init__(self, segment):
-        self.file = out_dir / f"{segment}.parquet"
-        _log.info("opening output file %s", self.file)
-        self.writer = ParquetWriter(
-            os.fspath(self.file), compression="zstd", compression_level=9
-        )
-        self.queue = Queue(10)
-
-    def run(self):
-        while True:
-            item = self.queue.get()
-            if item is None:
-                _log.info("finishing output file %s", self.file)
-                self.writer.close()
-                return
-
-            self.writer.write_table(item)
+        assert self.writer is not None
+        self.writer.write_table(out)

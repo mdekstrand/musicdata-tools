@@ -32,4 +32,4 @@ def parse_sqlinfo(fn: Path) -> SqlData:
         meta = safe_load(yaml)
     else:
         meta = {}
-    return meta, sql
+    return SqlData(meta, sql)
