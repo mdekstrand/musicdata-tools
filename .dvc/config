@@ -1,0 +1,4 @@
+[core]
+    remote = vault
+['remote "vault"']
+    url = webdavs://inertial.cci.drexel.edu/dvc/musicdata
