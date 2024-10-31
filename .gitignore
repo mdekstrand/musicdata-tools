@@ -5,3 +5,7 @@ __pycache__
 
 *.log
 perf_data*/
+
+# pixi environments
+.pixi
+*.egg-info
