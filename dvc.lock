@@ -24,3 +24,17 @@ stages:
       hash: md5
       md5: 215df73d559d91bb04c5d965fe25a673
       size: 1055404032
+  import-mlhd:
+    cmd: python ingest.py --mlhd
+    deps:
+    - path: source/mlhdplus
+      hash: md5
+      md5: 74c52e5ff2fba58a13bc8bada40a675f.dir
+      size: 258484725760
+      nfiles: 16
+    outs:
+    - path: data/mlhd
+      hash: md5
+      md5: dfb9940aa5cedc18d3117830f33e89a3.dir
+      size: 199468664058
+      nfiles: 1233
