@@ -25,6 +25,8 @@ duckdb-cli = "~=1.0"
 enlighten = "~=1.12"
 pyzmq = "~=26.0"
 humanize = "~=4.11"
+jupyter = ">=1.1.1,<2"
+pandas = ">=2.2.3,<3"
 
 [pypi-dependencies]
 docopt-ng = ">=0.9"
