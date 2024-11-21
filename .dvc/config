@@ -2,4 +2,4 @@
     remote = vault
 ['remote "vault"']
     url = webdavs://inertial.cci.drexel.edu/vault/dvc/musicdata
-    ssl_verify = false
+
