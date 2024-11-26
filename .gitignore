@@ -2,9 +2,15 @@ __pycache__
 *.pyc
 *.pyo
 *.wal
+.ipynb_checkpoints/
 
 *.log
 perf_data*/
+
+*.DS_Store
+*~
+*.tmp
+*.swp
 
 # pixi environments
 .pixi
