@@ -15,3 +15,12 @@ stages:
     - source/mlhdplus
     outs:
     - data/mlhd
+  
+  generate_stats:
+    cmd: python datanalysis/analysis.py
+    deps:
+      - datanalysis/analysis.py
+      - data/musicbrainz.db
+      - data/mlhd/
+    outs:
+      - datanalysis/outputs/

@@ -2,6 +2,7 @@ __pycache__
 *.pyc
 *.pyo
 *.wal
+.ipynb_checkpoints/
 
 *.log
 perf_data*/
@@ -9,3 +10,5 @@ perf_data*/
 # pixi environments
 .pixi
 *.egg-info
+
+.tmp/
