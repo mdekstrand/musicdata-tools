@@ -1,0 +1,5 @@
+outs:
+- md5: da5789cea4df8250a2c24e15893d38a2
+  size: 1746
+  hash: md5
+  path: genre_count.parquet

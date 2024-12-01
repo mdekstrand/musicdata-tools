@@ -15,7 +15,7 @@ stages:
     - source/mlhdplus
     outs:
     - data/mlhd
-  
+
   generate_stats:
     cmd: python datanalysis/analysis.py
     deps:
@@ -24,3 +24,4 @@ stages:
       - data/mlhd/
     outs:
       - datanalysis/outputs/
+

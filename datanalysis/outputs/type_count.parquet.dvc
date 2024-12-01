@@ -1,0 +1,5 @@
+outs:
+- md5: 8e778c37f7a0035d6981618c42dccbd0
+  size: 657
+  hash: md5
+  path: type_count.parquet

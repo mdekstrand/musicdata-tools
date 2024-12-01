@@ -1,8 +1,13 @@
 import duckdb
+import os
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+mlhd_path = os.path.join(current_dir, "../data/mlhd/*/*.parquet")
+musicbrainz_path = os.path.join(current_dir, "../data/musicbrainz.db")
+stat_path = os.path.join(current_dir, "outputs")
 
-mlhd_path = '../data/mlhd/*/*.parquet'
-musicbrainz_path = '../data/musicbrainz.db'
+# ensuring data directory exists
+os.makedirs(stat_path, exist_ok=True)
 
 conn = duckdb.connect()
 brainz_conn = duckdb.connect(musicbrainz_path)
@@ -21,7 +26,7 @@ COPY (
     USING (artist_id)
     GROUP BY gender
     ORDER BY non_unique_count DESC
-) TO 'gender_count.parquet' (COMPRESSION zstd);
+) TO '{stat_path}/gender_count.parquet' (COMPRESSION zstd);
 """
 
 brainz_conn.execute(gender_count_query)
@@ -42,7 +47,7 @@ COPY (
     GROUP BY gender
     HAVING COUNT(user_id) >= 10
     ORDER BY non_unique_count DESC
-) TO 'gender_count_active.parquet' (COMPRESSION zstd);
+) TO '{stat_path}/gender_count_active.parquet' (COMPRESSION zstd);
 """
 
 brainz_conn.execute(gender_count_active)
@@ -59,7 +64,7 @@ COPY (
            read_parquet('{mlhd_path}')
     GROUP BY 
            release_id
-) TO 'release_count.parquet'(COMPRESSION zstd);
+) TO '{stat_path}/release_count.parquet'(COMPRESSION zstd);
 """
 conn.execute(release_count_query)
 print("Number of users and plays for each release saved")
@@ -78,7 +83,7 @@ COPY (
     USING (artist_id)
     GROUP BY type
     ORDER BY non_unique_count DESC
-) TO 'type_count.parquet' (COMPRESSION zstd);
+) TO '{stat_path}/type_count.parquet' (COMPRESSION zstd);
 """
 
 brainz_conn.execute(type_count_query)
@@ -100,7 +105,18 @@ LEFT JOIN
 USING (rec_id)     
 GROUP BY genre_name
 ORDER BY non_unique_count DESC
-)TO 'genre_count.parquet' (COMPRESSION zstd);"""
+)TO '{stat_path}/genre_count.parquet' (COMPRESSION zstd);"""
 
 brainz_conn.execute(genre_count_query)
 print("Genre data saved")
+
+# extract number of ratings of each user
+rating_count_query = f"""COPY(
+SELECT user_id, 
+COUNT(rec_id) as rating_count
+FROM read_parquet('{mlhd_path}') 
+GROUP BY user_id
+)TO '{stat_path}/rating_count.parquet' (COMPRESSION zstd);"""
+
+conn.execute(rating_count_query)
+print("Number of ratings for each user saved")
