@@ -17,9 +17,9 @@ stages:
     - data/mlhd
 
   generate_stats:
-    cmd: python datanalysis/analysis.py
+    cmd: python datanalysis/summarizestats.py
     deps:
-      - datanalysis/analysis.py
+      - datanalysis/summarizestats.py
       - data/musicbrainz.db
       - data/mlhd/
     outs:
