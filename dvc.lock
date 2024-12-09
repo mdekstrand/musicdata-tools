@@ -39,7 +39,7 @@ stages:
       size: 199468739615
       nfiles: 1233
   generate_stats:
-    cmd: python datanalysis/analysis.py
+    cmd: python datanalysis/summarizestats.py
     deps:
     - path: data/mlhd/
       hash: md5
@@ -50,13 +50,13 @@ stages:
       hash: md5
       md5: 215df73d559d91bb04c5d965fe25a673
       size: 1055404032
-    - path: datanalysis/analysis.py
+    - path: datanalysis/summarizestats.py
       hash: md5
-      md5: 3e110d54b01eefbd72c8e2313dee4986
-      size: 3489
+      md5: ba495c7c59addfe36a20ae18b24d6aec
+      size: 6014
     outs:
     - path: datanalysis/outputs/
       hash: md5
-      md5: 05eb4f4963cfdb6a802d1963237c0b0b.dir
-      size: 30280634
-      nfiles: 6
+      md5: 0c490d04974f94fa57fc236fc06eaa69.dir
+      size: 143298061
+      nfiles: 10
