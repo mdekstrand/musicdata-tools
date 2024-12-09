@@ -19,7 +19,8 @@ COPY (
     SELECT 
         a.gender AS gender,
         COUNT(user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users  
+        COUNT(DISTINCT mlhd.user_id) AS n_users, 
+        COUNT(DISTINCT mlhd.artist_id) AS unique_count
     FROM 
         (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
     LEFT JOIN 
@@ -39,7 +40,8 @@ COPY (
     SELECT 
         a.gender AS gender,
         COUNT(user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users  
+        COUNT(DISTINCT mlhd.user_id) AS n_users, 
+        COUNT(DISTINCT mlhd.artist_id) AS unique_count 
     FROM 
         (
         SELECT UNNEST(artist_ids) AS artist_id, user_id 
@@ -83,7 +85,8 @@ COPY (
     SELECT 
         a.type AS type,
         COUNT(mlhd.user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users  
+        COUNT(DISTINCT mlhd.user_id) AS n_users,  
+        COUNT(DISTINCT mlhd.artist_id) AS unique_count
     FROM 
         (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
     LEFT JOIN 
@@ -154,7 +157,7 @@ track_count_query = f"""
 COPY ( 
     SELECT 
            rec_id, 
-           COUNT(user_id) AS n_plays, 
+           COUNT(user_id) AS n_plays 
     FROM 
            read_parquet('{mlhd_path}')
     GROUP BY rec_id
@@ -163,3 +166,47 @@ COPY (
 """
 conn.execute(track_count_query)
 print("Number of plays for each track saved")
+
+# count unique number of each entity in mlhd
+unique_count_query = f"""
+COPY (
+    SELECT 
+        COUNT(DISTINCT rec_id) AS n_tracks,  
+        COUNT(DISTINCT artist_id) AS n_artists,  
+        COUNT(DISTINCT release_id) AS n_releases, 
+        COUNT(DISTINCT user_id) AS n_users  
+    FROM (
+        SELECT 
+            rec_id, 
+            UNNEST(artist_ids) AS artist_id, 
+            release_id, 
+            user_id
+        FROM read_parquet('{mlhd_path}')
+    ) AS unnested_data
+) TO '{stat_path}/unique_counts.parquet' (COMPRESSION zstd);
+"""
+
+
+conn.execute(unique_count_query)
+print("Unique counts saved")
+
+# extract artist gender distribution based on first artist 
+gender_count_fartist_query = f"""
+COPY (
+    SELECT 
+        a.gender AS gender,
+        COUNT(user_id) AS n_plays,  
+        COUNT(DISTINCT mlhd.user_id) AS n_users, 
+        COUNT(DISTINCT mlhd.artist_id) AS unique_count
+    FROM 
+        (SELECT artist_ids[1] AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
+    LEFT JOIN 
+        mb_artist a
+    USING (artist_id)
+    GROUP BY gender
+    ORDER BY n_plays DESC
+) TO '{stat_path}/gender_count_first.parquet' (COMPRESSION zstd);
+"""
+
+brainz_conn.execute(gender_count_fartist_query)
+print("Gender count based on first artist saved")
