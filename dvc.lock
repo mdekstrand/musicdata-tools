@@ -52,11 +52,11 @@ stages:
       size: 1055404032
     - path: datanalysis/summarizestats.py
       hash: md5
-      md5: ba495c7c59addfe36a20ae18b24d6aec
-      size: 6014
+      md5: 52bdec8e96965c0646bb61a3393e1b0a
+      size: 8824
     outs:
     - path: datanalysis/outputs/
       hash: md5
-      md5: 0c490d04974f94fa57fc236fc06eaa69.dir
-      size: 143298061
-      nfiles: 10
+      md5: d434a01b4f9db6188a0df79b09109de7.dir
+      size: 158200529
+      nfiles: 14

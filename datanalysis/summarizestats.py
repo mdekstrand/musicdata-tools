@@ -125,7 +125,7 @@ print("Genre data saved")
 artist_count_query = f"""
 COPY (
     SELECT 
-        a.artist_id,
+        mlhd.artist_id,
         COUNT(mlhd.user_id) AS n_plays,  
         COUNT(DISTINCT mlhd.user_id) AS n_users  
     FROM 
@@ -133,7 +133,7 @@ COPY (
     LEFT JOIN 
         mb_artist a
     USING (artist_id)
-    GROUP BY a.artist_id
+    GROUP BY mlhd.artist_id
     ORDER BY n_plays DESC
 ) TO '{stat_path}/artist_count.parquet' (COMPRESSION zstd);
 """
@@ -210,3 +210,94 @@ COPY (
 
 brainz_conn.execute(gender_count_fartist_query)
 print("Gender count based on first artist saved")
+
+gender_avg_unique_users = f"""
+COPY (
+    SELECT 
+        artist_user_counts.gender AS gender,
+        AVG(unique_users) AS avg_unique_users
+    FROM (
+        SELECT 
+            mlhd.artist_id,
+            a.gender,
+            COUNT(DISTINCT mlhd.user_id) AS unique_users
+        FROM 
+            (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
+        LEFT JOIN 
+            mb_artist a
+        USING (artist_id)
+        GROUP BY mlhd.artist_id, a.gender
+    ) artist_user_counts
+    GROUP BY artist_user_counts.gender
+    ORDER BY avg_unique_users DESC
+) TO '{stat_path}/gender_avg_unique_users.parquet' (COMPRESSION zstd);
+"""
+brainz_conn.execute(gender_avg_unique_users)
+print("Average # unique users for each gender saved")
+
+artist_unique_users = f"""
+COPY (
+      SELECT 
+        mlhd.artist_id,
+        a.gender,
+        COUNT(DISTINCT mlhd.user_id) AS unique_users
+    FROM 
+        (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
+    LEFT JOIN 
+        mb_artist a
+    USING (artist_id)
+    GROUP BY mlhd.artist_id, a.gender
+    ORDER BY unique_users DESC
+) TO '{stat_path}/artist_unique_users.parquet' (COMPRESSION zstd);
+"""
+brainz_conn.execute(artist_unique_users)
+print("# unique users for each artist saved")
+
+# average # unique users based on first artists
+fartist_avg_unique_users = f"""
+COPY (
+    SELECT 
+        artist_user_counts.gender AS gender,
+        AVG(unique_users) AS avg_unique_users
+    FROM (
+        SELECT 
+            mlhd.artist_id,
+            a.gender,
+            COUNT(DISTINCT mlhd.user_id) AS unique_users
+        FROM 
+            (SELECT UNNEST(artist_ids) AS artist_id, user_id 
+            FROM read_parquet('{mlhd_path}')
+            WHERE array_length(artist_ids) = 1
+            ) mlhd
+        LEFT JOIN 
+            mb_artist a
+        USING (artist_id)
+        GROUP BY mlhd.artist_id, a.gender
+    ) artist_user_counts
+    GROUP BY artist_user_counts.gender
+    ORDER BY avg_unique_users DESC
+) TO '{stat_path}/fartist_avg_unique_users.parquet' (COMPRESSION zstd);
+"""
+brainz_conn.execute(fartist_avg_unique_users)
+print("Average # unique users for each gender saved")
+
+fartist_unique_users = f"""
+COPY (
+      SELECT 
+        mlhd.artist_id,
+        a.gender,
+        COUNT(DISTINCT mlhd.user_id) AS unique_users
+    FROM 
+        (SELECT UNNEST(artist_ids) AS artist_id, user_id 
+        FROM read_parquet('{mlhd_path}')
+        WHERE array_length(artist_ids) = 1 
+        ) mlhd
+    LEFT JOIN 
+        mb_artist a
+    USING (artist_id)
+    GROUP BY mlhd.artist_id, a.gender
+    ORDER BY unique_users DESC
+) TO '{stat_path}/fartist_unique_users.parquet' (COMPRESSION zstd);
+"""
+brainz_conn.execute(fartist_unique_users)
+print("# unique users for each artist saved")
