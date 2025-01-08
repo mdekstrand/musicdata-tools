@@ -16,6 +16,13 @@ stages:
     outs:
     - data/mlhd
 
+  import-mlhddb:
+    cmd: python ingest.py --mlhddb
+    deps:
+    - data/mlhd
+    outs:
+    - data/mlhd.db
+
   generate_stats:
     cmd: python datanalysis/summarizestats.py
     deps:

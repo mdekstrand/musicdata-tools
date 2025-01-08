@@ -4,6 +4,7 @@ Ingest source data to DuckDB-usable formats.
 Usage:
     ingest.py [options] --musicbrainz [-p PART]
     ingest.py [options] --mlhd
+    ingest.py [options] --mlhddb
 
 Options:
     -v, --verbose       enable verbose log output
@@ -14,6 +15,7 @@ Options:
 Modes:
     --musicbrainz       import MusicBrainz metadata
     --mlhd              import MLHD+ listening data
+    --mlhddb            import MLHD+ db version
 """
 
 import logging
@@ -24,6 +26,7 @@ from sandal.cli import setup_logging
 
 from musicdata import mlhd, musicbrainz
 from musicdata.layout import data_dir
+from source.scripts import generatemlhddb
 
 _log = logging.getLogger("ingest")
 
@@ -40,6 +43,9 @@ def main(args: ParsedOptions):
     elif args["--mlhd"]:
         _log.info("starting MLHD+ import")
         mlhd.import_mlhd()
+    elif args["--mlhddb"]:
+        _log.info("starting MLHD+ db import")
+        generatemlhddb.import_mlhd_db()    
     else:
         _log.error("no valid action specified")
         sys.exit(2)
