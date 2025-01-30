@@ -9,6 +9,7 @@ from queue import Queue
 from threading import Thread
 
 import duckdb
+import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as csv
 import zstandard
@@ -17,34 +18,176 @@ from manylog import LogListener, init_worker_logging
 from progress_api import make_progress
 
 from .layout import data_dir, mlhd_src_dir
+from .params import id_ranges
+from memory_limits import duck_options
+from itertools import repeat
+import pyarrow.parquet as pq
 
 BATCH_SIZE = 20_000_000
 _MLHD_FN_RE = re.compile(r"^[a-f0-9]+/([a-f0-9-]+)\.txt\.zst")
 _log = logging.getLogger(__name__)
 
 out_dir = data_dir / "mlhd"
+mlhd_ids_path = data_dir / "mlhd_ids.parquet"
+
+def extract_unique_entities(file: Path):
+    """
+    Extract entities from a given file and return them as a dataframe
+    """
+    unique_entities = {
+        "user_id": set(),
+        "artist_ids": set(),
+        "release_id": set(),
+        "rec_id": set(),
+    }
+    decomp = zstandard.ZstdDecompressor()
+    
+    _log.info(f"Processing file {file} for extracting entities")
+    with open(file, "rb") as srcf, tarfile.TarFile(fileobj=srcf) as tf:
+    
+        for entry in tf:
+        
+            if entry.isdir():
+                continue
+
+            m = _MLHD_FN_RE.match(entry.name)
+            if not m:
+                _log.warning(f"Skipping invalid filename: {entry.name}")
+                continue
+
+            uid = m[1]
+            cstr = tf.extractfile(entry)
+            if not cstr:
+                _log.info("cstr is empty")
+                continue
+
+            with cstr, decomp.stream_reader(cstr) as data:
+                tbl = csv.read_csv(
+                    data,
+                    read_options=csv.ReadOptions(
+                        column_names=["timestamp", "artist_ids", "release_id", "rec_id"]
+                    ),
+                    parse_options=csv.ParseOptions(delimiter="\t"),
+                )
+                   
+                # add entities to shared dictionaries
+                unique_entities["user_id"].add(uid)
+                
+                artist_lists = tbl.column("artist_ids").to_pylist()
+                for artist_list in artist_lists:
+                    unique_entities["artist_ids"].update(artist_list.split(','))
+               
+                for col in ["release_id", "rec_id"]:
+                    unique_entities[col].update(tbl.column(col).to_pylist())
+
+    return unique_entities
 
 
-def import_mlhd(jobs: int | None = None):
+def build_mlhd_ids(files, jobs):
+   
+    _log.info("building mlhd_ids by parallel extraction and deduplication")
+
+    # First pass: extract unique entities in parallel
+    with ProcessPoolExecutor(max_workers=jobs) as executor:
+        results = list(executor.map(extract_unique_entities, files))
+
+    _log.info("Merging extracted entities")
+    merged = {
+        "user_id": set(),
+        "artist_ids": set(),
+        "release_id": set(),
+        "rec_id": set()
+    }
+    for d in results:
+        for key in merged.keys():
+            merged[key].update(d.get(key, set()))
+
+    _log.info("Converting entity sets into a dataframe")
+    unique_df = pd.DataFrame(
+    [(key, value) for key, value_set in merged.items() for value in value_set],
+    columns=["entity_type", "entity_uuid"]
+)
+
+    _log.info("Assigning integer IDs to each entity")
+    unique_df["id_num"] = (
+        unique_df.groupby("entity_type").cumcount() +
+        unique_df["entity_type"].map(id_ranges)
+    )
+
+    _log.info("writing all unique entities with their ids into mlhd_ids...")
+
+    table = pa.Table.from_pandas(unique_df)
+    pq.write_table(table, mlhd_ids_path, compression='zstd')
+    _log.info("finished building mlhd_ids") 
+
+
+def map_entity_ids(tbl: pa.Table, db: duckdb.DuckDBPyConnection):
+
+    _log.info("mapping UUIDs to integer IDs using the mlhd_ids table")
+    
+    db.register("src", tbl)
+    query = """
+    WITH exploded AS (
+        SELECT
+            user_id AS user_uuid,
+            timestamp,
+            UNNEST(artist_ids) AS artist_uuid,
+            release_id AS release_uuid,
+            rec_id AS rec_uuid
+        FROM src
+    )
+    SELECT
+        user_map.id_num AS user_id,
+        exploded.timestamp,
+        ARRAY_AGG(artist_map.id_num) AS artist_ids,
+        release_map.id_num AS release_id,
+        rec_map.id_num AS rec_id
+    FROM exploded
+    LEFT JOIN mlhd_ids AS user_map
+           ON user_map.entity_uuid = exploded.user_uuid
+           AND user_map.entity_type = 'user_id'
+    LEFT JOIN mlhd_ids AS artist_map
+           ON artist_map.entity_uuid = exploded.artist_uuid
+           AND artist_map.entity_type = 'artist_ids'
+    LEFT JOIN mlhd_ids AS release_map
+           ON release_map.entity_uuid = exploded.release_uuid
+           AND release_map.entity_type = 'release_id'
+    LEFT JOIN mlhd_ids AS rec_map
+           ON rec_map.entity_uuid = exploded.rec_uuid
+           AND rec_map.entity_type = 'rec_id'
+    GROUP BY 1, 2, 4, 5
+    ORDER BY 1,2
+    """
+    out = db.sql(query).arrow()
+    
+    _log.info("mapped uuids to ids by joining tables")
+    
+    db.unregister("src")
+    return out
+
+
+def import_mlhd(jobs: int | None = None, use_mapping: bool = False):
+    
     files = sorted(mlhd_src_dir.glob("mlhdplus-complete-*.tar"))
     _log.info("found %d files", len(files))
 
     _log.info("ensuring output dir %s exists", out_dir)
     out_dir.mkdir(exist_ok=True)
 
-    fpb = make_progress(_log, "files", total=len(files))
-
-    ctx = mp.get_context("spawn")
-
     if jobs is None and "NUM_JOBS" in os.environ:
         jobs = int(os.environ["NUM_JOBS"])
-
     if jobs is None:
         jobs = max(1, min(mp.cpu_count() // 4, 4))
 
+    if use_mapping:
+        build_mlhd_ids(files, jobs) 
+
+    fpb = make_progress(_log, "files", total=len(files))
+    ctx = mp.get_context("spawn")
+
     if jobs == 1:
         for file in files:
-            import_file(file)
+            import_file(file, use_mapping)
             _log.info("finished file %s", file)
             fpb.update()
     else:
@@ -52,16 +195,17 @@ def import_mlhd(jobs: int | None = None):
             assert ll.address is not None
             with ProcessPoolExecutor(
                 jobs,
-                ctx,
+                mp_context=ctx,
                 initializer=init_worker_logging,
                 initargs=(ll.address, _log.getEffectiveLevel()),
             ) as pool:
-                for file, res in zip(files, pool.map(import_file, files)):
+                for file, _ in zip(files, 
+                pool.map(import_file, files, repeat(use_mapping))):
                     _log.info("finished file %s", file)
                     fpb.update()
 
 
-def import_file(file: Path):
+def import_file(file: Path, use_mapping:bool):
     """
     Import a single MLHD file.
     """
@@ -71,26 +215,30 @@ def import_file(file: Path):
     pos = 0
     decomp = zstandard.ZstdDecompressor()
     rec = None
+    
     with open(file, "rb") as srcf, tarfile.TarFile(fileobj=srcf) as tf:
         for entry in tf:
             old = pos
             pos = srcf.tell()
             pb.update(pos - old)
+            
             if entry.isdir():
                 if rec:
                     rec.finish()
                 _log.info("parsing segment %s", entry.name)
-                rec = SegmentRecorder(entry.name)
+                rec = SegmentRecorder(entry.name, use_mapping=use_mapping)
                 rec.start()
                 continue
 
             m = _MLHD_FN_RE.match(entry.name)
             if not m:
-                _log.warn("invalid filename: %s", entry.name)
+                _log.warning("invalid filename: %s", entry.name)
                 continue
             uid = m[1]
             cstr = tf.extractfile(entry)
+            
             assert cstr is not None
+            
             with cstr, decomp.stream_reader(cstr) as data:
                 tbl = csv.read_csv(
                     data,
@@ -110,15 +258,15 @@ def import_file(file: Path):
 
     pb.finish()
 
-
 class SegmentRecorder(Thread):
     segment: str
     queue: Queue[tuple[str, pa.Table] | None]
     out_dir: Path
     chunks: int
 
-    def __init__(self, segment):
+    def __init__(self, segment, use_mapping):
         self.segment = segment
+        self.use_mapping = use_mapping
         super().__init__(name=f"writer-{segment}")
         self.queue = Queue(10)
         self.out_dir = out_dir / segment
@@ -136,8 +284,11 @@ class SegmentRecorder(Thread):
     def run(self):
         self.out_dir.mkdir(exist_ok=True, parents=True)
 
-        with duckdb.connect() as db:
+        with duckdb.connect(config=duck_options()) as db:
             db.execute("PRAGMA disable_progress_bar")
+            if self.use_mapping and mlhd_ids_path.exists():
+                db.execute(f"CREATE VIEW mlhd_ids AS SELECT * FROM read_parquet('{mlhd_ids_path}')")
+                
             db.execute("""
                 CREATE TABLE events (
                     user_id UUID NOT NULL,
@@ -147,7 +298,7 @@ class SegmentRecorder(Thread):
                     rec_id UUID
                 )
             """)
-
+            
             while True:
                 try:
                     done = self._pump_item(db)
@@ -173,6 +324,7 @@ class SegmentRecorder(Thread):
     def _record_user_events(
         self, db: duckdb.DuckDBPyConnection, uid: str, tbl: pa.Table
     ) -> None:
+
         _log.debug("recording user %s", uid)
         src = db.from_arrow(tbl)  # noqa: F841
         proj = db.sql(
@@ -196,5 +348,12 @@ class SegmentRecorder(Thread):
         fn = self.out_dir / f"chunk-{self.chunks}.parquet"
 
         _log.debug("segment %s: writing %d rows to %s", self.segment, count, fn)
-        db.table("events").write_parquet(os.fspath(fn), compression="zstd")
+
+        if self.use_mapping:
+            arrow_table = db.table("events").arrow()
+            mapped = map_entity_ids(arrow_table, db)
+            db.from_arrow(mapped).write_parquet(os.fspath(fn), compression="zstd")
+        else:
+            db.table("events").write_parquet(os.fspath(fn), compression="zstd")
+        
         db.execute("TRUNCATE events")

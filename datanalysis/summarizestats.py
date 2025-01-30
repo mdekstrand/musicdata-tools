@@ -1,6 +1,7 @@
 import duckdb
 import os
 import pandas as pd
+from memory_limits import duck_options
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 mlhd_path = os.path.join(current_dir, "../data/mlhd/*/*.parquet")
@@ -10,8 +11,8 @@ stat_path = os.path.join(current_dir, "outputs")
 # ensuring data directory exists
 os.makedirs(stat_path, exist_ok=True)
 
-conn = duckdb.connect()
-brainz_conn = duckdb.connect(musicbrainz_path)
+conn = duckdb.connect(config=duck_options())
+brainz_conn = duckdb.connect(musicbrainz_path, config=duck_options())
 
 # extract artist gender distribution as play count and unique user count for each gender
 gender_count_query = f"""
@@ -141,10 +142,11 @@ COPY (
 brainz_conn.execute(artist_count_query)
 print("Artist count saved")
 
-# extract number of plays of each user
+# extract number of plays of each user & unique user,rec pairs
 play_count_query = f"""COPY(
 SELECT user_id, 
-COUNT(rec_id) as play_count
+COUNT(rec_id) as play_count,
+COUNT(DISTINCT user_id, rec_id) as unique_play_count
 FROM read_parquet('{mlhd_path}') 
 GROUP BY user_id
 )TO '{stat_path}/play_count.parquet' (COMPRESSION zstd);"""
@@ -301,3 +303,17 @@ COPY (
 """
 brainz_conn.execute(fartist_unique_users)
 print("# unique users for each artist saved")
+
+time_dist = f"""
+COPY (
+    SELECT 
+        DATE_TRUNC('month', TO_TIMESTAMP(timestamp)) AS date_start,
+        STRFTIME('%B', TO_TIMESTAMP(timestamp_column)) AS month_name,
+        COUNT(*) AS row_count
+    FROM read_parquet('{mlhd_path}')
+    GROUP BY date_start, month_name
+    ORDER BY date_start
+) TO '{stat_path}/time_dist.parquet' (COMPRESSION zstd);
+"""
+conn.execute(time_dist)
+print("distribution over time is saved")

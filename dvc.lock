@@ -25,8 +25,20 @@ stages:
       md5: 215df73d559d91bb04c5d965fe25a673
       size: 1055404032
   import-mlhd:
-    cmd: python ingest.py --mlhd
+    cmd: python ingest.py --mlhd --use-mapping
     deps:
+    - path: musicdata/layout.py
+      hash: md5
+      md5: 95f0e77f860147cd977efcb62f99c3e1
+      size: 170
+    - path: musicdata/mlhd.py
+      hash: md5
+      md5: 1216518581685c7ce3f18d461301ff46
+      size: 11342
+    - path: musicdata/params.py
+      hash: md5
+      md5: eb430f047fd1aa7ae785112dee906353
+      size: 172
     - path: source/mlhdplus
       hash: md5
       md5: 74c52e5ff2fba58a13bc8bada40a675f.dir
@@ -35,9 +47,13 @@ stages:
     outs:
     - path: data/mlhd
       hash: md5
-      md5: e95063128861733ceffa98850fe579e1.dir
-      size: 199468739615
+      md5: 610d22a97a2b4d2a6fc05e1c5052c3e8.dir
+      size: 128530316577
       nfiles: 1233
+    - path: data/mlhd_ids.parquet
+      hash: md5
+      md5: 4926b2acb9daf72b2510105133708491
+      size: 183856957
   generate_stats:
     cmd: python datanalysis/summarizestats.py
     deps:
