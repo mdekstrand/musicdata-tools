@@ -10,18 +10,15 @@ stages:
     - data/musicbrainz.db
 
   import-mlhd:
-    cmd: python ingest.py --mlhd
+    cmd: python ingest.py --mlhd --use-mapping
     deps:
     - source/mlhdplus
+    - musicdata/mlhd.py
+    - musicdata/layout.py
+    - musicdata/params.py
     outs:
     - data/mlhd
-
-  import-mlhddb:
-    cmd: python ingest.py --mlhddb
-    deps:
-    - data/mlhd
-    outs:
-    - data/mlhd.db
+    - data/mlhd_ids.parquet
 
   generate_stats:
     cmd: python datanalysis/summarizestats.py
