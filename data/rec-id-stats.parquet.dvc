@@ -1,0 +1,5 @@
+outs:
+- md5: b226ef4f221dacc1992fc3977a1080d0
+  size: 201788661
+  hash: md5
+  path: rec-id-stats.parquet

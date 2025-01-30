@@ -1,3 +1,6 @@
 /musicbrainz.db
 /mlhd/
 /mlhd
+/rec-id-stats.parquet
+/release-id-stats.parquet
+/user-id-stats.parquet
