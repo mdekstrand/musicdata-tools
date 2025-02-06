@@ -163,7 +163,7 @@ def import_mlhd(jobs: int | None = None, use_mapping: bool = False):
         jobs = max(1, min(mp.cpu_count() // 4, 4))
 
     if use_mapping:
-        build_mlhd_ids(files, jobs)
+        build_mlhd_ids(files, jobs * 4)
 
     fpb = make_progress(_log, "files", total=len(files))
     ctx = mp.get_context("spawn")
