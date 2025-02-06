@@ -4,6 +4,7 @@ import os
 import re
 import tarfile
 from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
 from pathlib import Path
 from queue import Queue
 from threading import Thread
@@ -12,23 +13,24 @@ import duckdb
 import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as csv
+import pyarrow.parquet as pq
 import zstandard
 from humanize import naturalsize
 from manylog import LogListener, init_worker_logging
 from progress_api import make_progress
 
+from memory_limits import duck_options
+
 from .layout import data_dir, mlhd_src_dir
 from .params import id_ranges
-from memory_limits import duck_options
-from itertools import repeat
-import pyarrow.parquet as pq
 
-BATCH_SIZE = 10_000_000
+BATCH_SIZE = 20_000_000
 _MLHD_FN_RE = re.compile(r"^[a-f0-9]+/([a-f0-9-]+)\.txt\.zst")
 _log = logging.getLogger(__name__)
 
 out_dir = data_dir / "mlhd"
 mlhd_ids_path = data_dir / "mlhd_ids.parquet"
+
 
 def extract_unique_entities(file: Path):
     """
@@ -41,10 +43,9 @@ def extract_unique_entities(file: Path):
         "rec_id": set(),
     }
     decomp = zstandard.ZstdDecompressor()
-    
+
     _log.info(f"Processing file {file} for extracting entities")
     with open(file, "rb") as srcf, tarfile.TarFile(fileobj=srcf) as tf:
-    
         for entry in tf:
             if entry.isdir():
                 continue
@@ -68,14 +69,14 @@ def extract_unique_entities(file: Path):
                     ),
                     parse_options=csv.ParseOptions(delimiter="\t"),
                 )
-                   
+
                 # add entities to shared dictionaries
                 unique_entities["user_id"].add(uid)
-                
+
                 artist_lists = tbl.column("artist_ids").to_pylist()
                 for artist_list in artist_lists:
-                    unique_entities["artist_ids"].update(artist_list.split(','))
-               
+                    unique_entities["artist_ids"].update(artist_list.split(","))
+
                 for col in ["release_id", "rec_id"]:
                     unique_entities[col].update(tbl.column(col).to_pylist())
 
@@ -83,7 +84,6 @@ def extract_unique_entities(file: Path):
 
 
 def build_mlhd_ids(files, jobs):
-   
     _log.info("building mlhd_ids by parallel extraction and deduplication")
 
     # First pass: extract unique entities in parallel
@@ -95,7 +95,7 @@ def build_mlhd_ids(files, jobs):
         "user_id": set(),
         "artist_ids": set(),
         "release_id": set(),
-        "rec_id": set()
+        "rec_id": set(),
     }
     for d in results:
         for key in merged.keys():
@@ -103,62 +103,54 @@ def build_mlhd_ids(files, jobs):
 
     _log.info("Converting entity sets into a dataframe")
     unique_df = pd.DataFrame(
-    [(key, value) for key, value_set in merged.items() for value in value_set],
-    columns=["entity_type", "entity_uuid"]
-)
+        [(key, value) for key, value_set in merged.items() for value in value_set],
+        columns=["entity_type", "entity_uuid"],
+    )
 
     _log.info("Assigning integer IDs to each entity")
     unique_df["id_num"] = (
-        unique_df.groupby("entity_type").cumcount() +
-        unique_df["entity_type"].map(id_ranges)
+        unique_df.groupby("entity_type").cumcount()
+        + unique_df["entity_type"].map(id_ranges)
     ).astype("int32")
 
     _log.info("writing all unique entities with their ids into mlhd_ids...")
 
     table = pa.Table.from_pandas(unique_df)
-    pq.write_table(table, mlhd_ids_path, compression='zstd')
-    _log.info("finished building mlhd_ids") 
+    pq.write_table(table, mlhd_ids_path, compression="zstd")
+    _log.info("finished building mlhd_ids")
 
 
-def map_entity_ids(tbl: pa.Table, db: duckdb.DuckDBPyConnection):
-
+def map_entity_ids(db: duckdb.DuckDBPyConnection):
     _log.info("mapping UUIDs to integer IDs using the mlhd_ids table")
-    
-    db.register("src", tbl)
+
     query = """
     SELECT
         user_map.id_num AS user_id,
-        src.timestamp,
+        events.timestamp,
         ARRAY(
             SELECT artist_map.id_num
-            FROM UNNEST(src.artist_ids) as t(artist_uuid)
+            FROM UNNEST(events.artist_ids) as t(artist_uuid)
             LEFT JOIN mlhd_ids as artist_map
             ON artist_map.entity_uuid = t.artist_uuid
             AND artist_map.entity_type = 'artist_ids'
         ) AS artist_ids,
         release_map.id_num AS release_id,
         rec_map.id_num AS rec_id
-    FROM src
+    FROM events
     LEFT JOIN mlhd_ids AS user_map
-        ON user_map.entity_uuid = src.user_id
+        ON user_map.entity_uuid = events.user_id
         AND user_map.entity_type = 'user_id'
     LEFT JOIN mlhd_ids AS release_map
-        ON release_map.entity_uuid = src.release_id
+        ON release_map.entity_uuid = events.release_id
         AND release_map.entity_type = 'release_id'
     LEFT JOIN mlhd_ids AS rec_map
-       ON rec_map.entity_uuid = src.rec_id
-       AND rec_map.entity_type = 'rec_id' 
+       ON rec_map.entity_uuid = events.rec_id
+       AND rec_map.entity_type = 'rec_id'
     """
-    out = db.sql(query).arrow()
-    
-    _log.info("mapped uuids to ids by joining tables")
-    
-    db.unregister("src")
-    return out
+    return db.sql(query)
 
 
 def import_mlhd(jobs: int | None = None, use_mapping: bool = False):
-    
     files = sorted(mlhd_src_dir.glob("mlhdplus-complete-*.tar"))
     _log.info("found %d files", len(files))
 
@@ -171,7 +163,7 @@ def import_mlhd(jobs: int | None = None, use_mapping: bool = False):
         jobs = max(1, min(mp.cpu_count() // 4, 4))
 
     if use_mapping:
-        build_mlhd_ids(files, jobs) 
+        build_mlhd_ids(files, jobs)
 
     fpb = make_progress(_log, "files", total=len(files))
     ctx = mp.get_context("spawn")
@@ -190,13 +182,14 @@ def import_mlhd(jobs: int | None = None, use_mapping: bool = False):
                 initializer=init_worker_logging,
                 initargs=(ll.address, _log.getEffectiveLevel()),
             ) as pool:
-                for file, _ in zip(files, 
-                pool.map(import_file, files, repeat(use_mapping))):
+                for file, _ in zip(
+                    files, pool.map(import_file, files, repeat(use_mapping))
+                ):
                     _log.info("finished file %s", file)
                     fpb.update()
 
 
-def import_file(file: Path, use_mapping:bool):
+def import_file(file: Path, use_mapping: bool):
     """
     Import a single MLHD file.
     """
@@ -206,13 +199,13 @@ def import_file(file: Path, use_mapping:bool):
     pos = 0
     decomp = zstandard.ZstdDecompressor()
     rec = None
-    
+
     with open(file, "rb") as srcf, tarfile.TarFile(fileobj=srcf) as tf:
         for entry in tf:
             old = pos
             pos = srcf.tell()
             pb.update(pos - old)
-            
+
             if entry.isdir():
                 if rec:
                     rec.finish()
@@ -227,9 +220,9 @@ def import_file(file: Path, use_mapping:bool):
                 continue
             uid = m[1]
             cstr = tf.extractfile(entry)
-            
+
             assert cstr is not None
-            
+
             with cstr, decomp.stream_reader(cstr) as data:
                 tbl = csv.read_csv(
                     data,
@@ -248,6 +241,7 @@ def import_file(file: Path, use_mapping:bool):
             rec.finish()
 
     pb.finish()
+
 
 class SegmentRecorder(Thread):
     segment: str
@@ -278,8 +272,11 @@ class SegmentRecorder(Thread):
         with duckdb.connect(config=duck_options()) as db:
             # db.execute("PRAGMA disable_progress_bar")
             if self.use_mapping and mlhd_ids_path.exists():
-                db.execute(f"CREATE VIEW mlhd_ids AS SELECT * FROM read_parquet('{mlhd_ids_path}')")
-                
+                db.execute(
+                    f"CREATE TABLE mlhd_ids AS SELECT * FROM read_parquet('{mlhd_ids_path}') ORDER BY entity_uuid"
+                )
+                db.execute("CREATE INDEX entity_id_idx ON mlhd_ids (entity_uuid)")
+
             db.execute("""
                 CREATE TABLE events (
                     user_id UUID NOT NULL,
@@ -289,7 +286,7 @@ class SegmentRecorder(Thread):
                     rec_id UUID
                 )
             """)
-            
+
             while True:
                 try:
                     done = self._pump_item(db)
@@ -315,7 +312,6 @@ class SegmentRecorder(Thread):
     def _record_user_events(
         self, db: duckdb.DuckDBPyConnection, uid: str, tbl: pa.Table
     ) -> None:
-
         _log.debug("recording user %s", uid)
         src = db.from_arrow(tbl)  # noqa: F841
         proj = db.sql(
@@ -341,10 +337,9 @@ class SegmentRecorder(Thread):
         _log.debug("segment %s: writing %d rows to %s", self.segment, count, fn)
 
         if self.use_mapping:
-            arrow_table = db.table("events").arrow()
-            mapped = map_entity_ids(arrow_table, db)
-            db.from_arrow(mapped).write_parquet(os.fspath(fn), compression="zstd")
+            mapped = map_entity_ids(db)
+            mapped.write_parquet(os.fspath(fn), compression="zstd")
         else:
             db.table("events").write_parquet(os.fspath(fn), compression="zstd")
-        
+
         db.execute("TRUNCATE events")
