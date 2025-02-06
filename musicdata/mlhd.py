@@ -269,7 +269,7 @@ class SegmentRecorder(Thread):
     def run(self):
         self.out_dir.mkdir(exist_ok=True, parents=True)
 
-        with duckdb.connect(config=duck_options()) as db:
+        with duckdb.connect(config=duck_options(mem_fraction=0.15)) as db:
             # db.execute("PRAGMA disable_progress_bar")
             if self.use_mapping and mlhd_ids_path.exists():
                 db.execute(
