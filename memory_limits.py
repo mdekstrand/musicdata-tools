@@ -34,14 +34,15 @@ def memory_limit(fraction=0.5, max_gb=96) -> int:
         return round(lim)
 
 def duck_options(mem_fraction=0.5, mem_max_gb=96) -> dict:
-    num_cores = os.cpu_count()
-    num_threads = num_cores // 3 
+    # num_cores = os.cpu_count()
+    num_threads = 8
 
     mem = memory_limit(mem_fraction, mem_max_gb)
    
     return {
         "memory_limit": "{:.1f} GiB".format(mem / (1024 * 1024 * 1024)),
         "threads": num_threads, 
+        "temp_directory": "home/sv849/spill"
     }
 
 if __name__ == '__main__':

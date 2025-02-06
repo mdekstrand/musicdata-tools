@@ -23,7 +23,7 @@ from memory_limits import duck_options
 from itertools import repeat
 import pyarrow.parquet as pq
 
-BATCH_SIZE = 20_000_000
+BATCH_SIZE = 10_000_000
 _MLHD_FN_RE = re.compile(r"^[a-f0-9]+/([a-f0-9-]+)\.txt\.zst")
 _log = logging.getLogger(__name__)
 
@@ -46,7 +46,6 @@ def extract_unique_entities(file: Path):
     with open(file, "rb") as srcf, tarfile.TarFile(fileobj=srcf) as tf:
     
         for entry in tf:
-        
             if entry.isdir():
                 continue
 
@@ -112,7 +111,7 @@ def build_mlhd_ids(files, jobs):
     unique_df["id_num"] = (
         unique_df.groupby("entity_type").cumcount() +
         unique_df["entity_type"].map(id_ranges)
-    )
+    ).astype("int32")
 
     _log.info("writing all unique entities with their ids into mlhd_ids...")
 
@@ -127,36 +126,28 @@ def map_entity_ids(tbl: pa.Table, db: duckdb.DuckDBPyConnection):
     
     db.register("src", tbl)
     query = """
-    WITH exploded AS (
-        SELECT
-            user_id AS user_uuid,
-            timestamp,
-            UNNEST(artist_ids) AS artist_uuid,
-            release_id AS release_uuid,
-            rec_id AS rec_uuid
-        FROM src
-    )
     SELECT
         user_map.id_num AS user_id,
-        exploded.timestamp,
-        ARRAY_AGG(artist_map.id_num) AS artist_ids,
+        src.timestamp,
+        ARRAY(
+            SELECT artist_map.id_num
+            FROM UNNEST(src.artist_ids) as t(artist_uuid)
+            LEFT JOIN mlhd_ids as artist_map
+            ON artist_map.entity_uuid = t.artist_uuid
+            AND artist_map.entity_type = 'artist_ids'
+        ) AS artist_ids,
         release_map.id_num AS release_id,
         rec_map.id_num AS rec_id
-    FROM exploded
+    FROM src
     LEFT JOIN mlhd_ids AS user_map
-           ON user_map.entity_uuid = exploded.user_uuid
-           AND user_map.entity_type = 'user_id'
-    LEFT JOIN mlhd_ids AS artist_map
-           ON artist_map.entity_uuid = exploded.artist_uuid
-           AND artist_map.entity_type = 'artist_ids'
+        ON user_map.entity_uuid = src.user_id
+        AND user_map.entity_type = 'user_id'
     LEFT JOIN mlhd_ids AS release_map
-           ON release_map.entity_uuid = exploded.release_uuid
-           AND release_map.entity_type = 'release_id'
+        ON release_map.entity_uuid = src.release_id
+        AND release_map.entity_type = 'release_id'
     LEFT JOIN mlhd_ids AS rec_map
-           ON rec_map.entity_uuid = exploded.rec_uuid
-           AND rec_map.entity_type = 'rec_id'
-    GROUP BY 1, 2, 4, 5
-    ORDER BY 1,2
+       ON rec_map.entity_uuid = src.rec_id
+       AND rec_map.entity_type = 'rec_id' 
     """
     out = db.sql(query).arrow()
     
@@ -285,7 +276,7 @@ class SegmentRecorder(Thread):
         self.out_dir.mkdir(exist_ok=True, parents=True)
 
         with duckdb.connect(config=duck_options()) as db:
-            db.execute("PRAGMA disable_progress_bar")
+            # db.execute("PRAGMA disable_progress_bar")
             if self.use_mapping and mlhd_ids_path.exists():
                 db.execute(f"CREATE VIEW mlhd_ids AS SELECT * FROM read_parquet('{mlhd_ids_path}')")
                 
