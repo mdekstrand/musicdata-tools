@@ -29,7 +29,7 @@ _log = logging.getLogger("ingest")
 
 
 def main(args: ParsedOptions):
-    setup_logging(args["--verbose"], args["--log-file"], True)
+    setup_logging(args["--verbose"], "ingest.log", True)
 
     _log.info("ensuring data directory exists")
     data_dir.mkdir(exist_ok=True)
