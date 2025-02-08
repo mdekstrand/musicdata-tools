@@ -33,8 +33,8 @@ stages:
       size: 170
     - path: musicdata/mlhd.py
       hash: md5
-      md5: 1216518581685c7ce3f18d461301ff46
-      size: 11342
+      md5: 725e51067f3ae663a58de67bef4ca711
+      size: 10941
     - path: musicdata/params.py
       hash: md5
       md5: eb430f047fd1aa7ae785112dee906353
@@ -47,13 +47,13 @@ stages:
     outs:
     - path: data/mlhd
       hash: md5
-      md5: 610d22a97a2b4d2a6fc05e1c5052c3e8.dir
-      size: 128530316577
+      md5: 6bfe198aa971abe8f62524190a0b9170.dir
+      size: 141306342264
       nfiles: 1233
     - path: data/mlhd_ids.parquet
       hash: md5
-      md5: 4926b2acb9daf72b2510105133708491
-      size: 183856957
+      md5: 0ddbd0a73f94261c2b80b4b6c66e4ab8
+      size: 201553795
   generate_stats:
     cmd: python datanalysis/summarizestats.py
     deps:
