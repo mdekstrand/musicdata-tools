@@ -1,6 +1,5 @@
-import os
 import resource
-
+import os
 import psutil
 
 
@@ -15,7 +14,6 @@ def configured_memory() -> int:
         return soft
     else:
         return vm.total
-
 
 def memory_limit(fraction=0.5, max_gb=96) -> int:
     """
@@ -35,19 +33,19 @@ def memory_limit(fraction=0.5, max_gb=96) -> int:
     else:
         return round(lim)
 
-
 def duck_options(mem_fraction=0.5, mem_max_gb=96) -> dict:
-    # num_cores = os.cpu_count()
-    num_threads = 8
+    num_cores = os.cpu_count()
+    num_threads = num_cores // 5
 
     mem = memory_limit(mem_fraction, mem_max_gb)
-
+   
     return {
         "memory_limit": "{:.1f} GiB".format(mem / (1024 * 1024 * 1024)),
-        "threads": num_threads,
+        # "memory_limit": "40 GiB",
+        "threads": num_threads, 
+        "temp_directory": '/storage/sv849/musicdata-tools/spill/'
     }
 
-
-if __name__ == "__main__":
-    print("memory limit:", memory_limit())
-    print("DuckDB options:", duck_options())
+if __name__ == '__main__':
+    print('memory limit:', memory_limit())
+    print('DuckDB options:', duck_options())
