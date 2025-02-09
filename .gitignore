@@ -12,3 +12,4 @@ perf_data*/
 *.egg-info
 
 .tmp/
+datanalysis/outputs
