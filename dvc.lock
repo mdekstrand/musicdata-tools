@@ -54,25 +54,3 @@ stages:
       hash: md5
       md5: 0ddbd0a73f94261c2b80b4b6c66e4ab8
       size: 201553795
-  generate_stats:
-    cmd: python datanalysis/summarizestats.py
-    deps:
-    - path: data/mlhd/
-      hash: md5
-      md5: e95063128861733ceffa98850fe579e1.dir
-      size: 199468739615
-      nfiles: 1233
-    - path: data/musicbrainz.db
-      hash: md5
-      md5: 215df73d559d91bb04c5d965fe25a673
-      size: 1055404032
-    - path: datanalysis/summarizestats.py
-      hash: md5
-      md5: 52bdec8e96965c0646bb61a3393e1b0a
-      size: 8824
-    outs:
-    - path: datanalysis/outputs/
-      hash: md5
-      md5: d434a01b4f9db6188a0df79b09109de7.dir
-      size: 158200529
-      nfiles: 14
