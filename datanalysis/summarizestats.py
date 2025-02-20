@@ -4,7 +4,8 @@ import pandas as pd
 from memory_limits import duck_options
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-mlhd_path = os.path.join(current_dir, "../data/mlhd/*/*.parquet")
+# mlhd_path = os.path.join(current_dir, "../data/mlhd/*/*.parquet")
+mlhd_path = "/storage/mde48/research/musicdata/data/mlhd/*/*.parquet"
 musicbrainz_path = os.path.join(current_dir, "../data/musicbrainz.db")
 stat_path = os.path.join(current_dir, "outputs")
 
@@ -146,7 +147,7 @@ print("Artist count saved")
 play_count_query = f"""COPY(
 SELECT user_id, 
 COUNT(rec_id) as play_count,
-COUNT(DISTINCT user_id, rec_id) as unique_play_count
+COUNT(DISTINCT rec_id) as unique_play_count
 FROM read_parquet('{mlhd_path}') 
 GROUP BY user_id
 )TO '{stat_path}/play_count.parquet' (COMPRESSION zstd);"""
@@ -306,14 +307,28 @@ print("# unique users for each artist saved")
 
 time_dist = f"""
 COPY (
-    SELECT 
-        DATE_TRUNC('month', TO_TIMESTAMP(timestamp)) AS date_start,
-        STRFTIME('%B', TO_TIMESTAMP(timestamp_column)) AS month_name,
-        COUNT(*) AS row_count
-    FROM read_parquet('{mlhd_path}')
-    GROUP BY date_start, month_name
-    ORDER BY date_start
+SELECT 
+    EXTRACT(YEAR FROM to_timestamp(timestamp)) AS year,
+    EXTRACT(MONTH FROM to_timestamp(timestamp)) AS month,
+    MIN(CAST(to_timestamp(timestamp) AS date)) AS start_date,
+    COUNT(*) AS row_count
+FROM read_parquet('{mlhd_path}')
+GROUP BY year, month
+ORDER BY year, month
 ) TO '{stat_path}/time_dist.parquet' (COMPRESSION zstd);
 """
 conn.execute(time_dist)
 print("distribution over time is saved")
+
+# duplicate_rows_count = f"""
+# COPY (
+#     SELECT SUM(n_records) AS total_records FROM (
+#         SELECT user_id, rec_id, timestamp, COUNT(*) AS n_records
+#         FROM read_parquet('{mlhd_path}')
+#         GROUP BY 1,2,3
+#     ) AS sub
+# ) TO '{stat_path}/duplicate_rows_count.parquet' (COMPRESSION zstd);
+# """
+# conn.execute(duplicate_rows_count)
+# print("duplicate count is saved")
+

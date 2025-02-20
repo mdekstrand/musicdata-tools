@@ -20,12 +20,12 @@ stages:
     - data/mlhd
     - data/mlhd_ids.parquet
 
-  generate_stats:
-    cmd: python datanalysis/summarizestats.py
-    deps:
-      - datanalysis/summarizestats.py
-      - data/musicbrainz.db
-      - data/mlhd/
-    outs:
-      - datanalysis/outputs/
+  # generate_stats:
+  #   cmd: python datanalysis/summarizestats.py
+  #   deps:
+  #     - datanalysis/summarizestats.py
+  #     - data/musicbrainz.db
+  #     - data/mlhd/
+  #   outs:
+  #     - datanalysis/outputs/
 
