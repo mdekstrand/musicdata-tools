@@ -20,6 +20,17 @@ stages:
     - data/mlhd
     - data/mlhd_ids.parquet
 
+  prep-mlhd:
+    cmd: python prep.py
+    deps:
+    - data/mlhd/
+    - data/musicbrainz.db
+    - data/mlhd_ids.parquet
+    - musicdata/mlhd_prep.py
+    - musicdata/layout.py
+    outs:
+    - data/mlhdv2.parquet
+
   # generate_stats:
   #   cmd: python datanalysis/summarizestats.py
   #   deps:
