@@ -13,3 +13,6 @@ perf_data*/
 
 .tmp/
 datanalysis/outputs
+datanalysis/memory_limits.py
+notebooks/memory_limits.py
+
