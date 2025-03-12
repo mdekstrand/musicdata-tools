@@ -29,7 +29,7 @@ stages:
     - musicdata/mlhd_prep.py
     - musicdata/layout.py
     outs:
-    - data/mlhdv2.parquet
+    - data/mlhdv2
 
   # generate_stats:
   #   cmd: python datanalysis/summarizestats.py

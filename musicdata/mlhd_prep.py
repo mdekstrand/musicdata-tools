@@ -114,6 +114,13 @@ def process():
                     where gender = 'Not applicable')""").fetchone()[0]     
 
         ##
+        _log.info("converting artist_ids list type to int")
+        conn.execute("""create or replace temp table mlhd as 
+                        select user_id, timestamp, artist_ids[1] as artist_id,
+                        release_id, rec_id from mlhd
+        """)
+       
+        ##
         _log.info("Getting final data row count")
         data_final_size += conn.execute("""select count(*) from 
                                         mlhd""").fetchone()[0]  
@@ -124,8 +131,10 @@ def process():
                     COPY (SELECT * FROM mlhd) 
                     TO '{new_mlhd_path}/chunk{counter}.parquet' (COMPRESSION zstd);
         """)
+
+        counter +=1  
     
-    with open(log_path, 'a') as logfile:
+    with open(log_path, 'w') as logfile:
             logfile.write(
                 f"""# of rows in musicbrainz: {brainz_size:,}\n""") 
             logfile.write(
@@ -139,11 +148,11 @@ def process():
             logfile.write(
                 f"""# of rows with sparse timestamp removed: {timestamp_count:,}\n""") 
             logfile.write(
-                f"""Number of rows with non-person artist removed (2nd round): {non_person_count:,}\n""")
+                f"""# of rows with non-person artist removed (2nd round): {non_person_count:,}\n""")
             logfile.write(
-                f"""Number of rows with null artist gender removed: {null_gender_count:,}\n""")   
+                f"""# of rows with null artist gender removed: {null_gender_count:,}\n""")   
             logfile.write(
-                f"""Number of rows with non-applicable artist gender removed: {napp_gender_count:,}\n""")   
+                f"""# of rows with non-applicable artist gender removed: {napp_gender_count:,}\n""")   
             logfile.write(
-                f"""Number of rows in final mlhd data: {data_final_size:,}\n""")   
-    counter +=1           
+                f"""# of rows in final mlhd data: {data_final_size:,}\n""")   
+             

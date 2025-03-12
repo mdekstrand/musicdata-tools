@@ -1,1 +1,10 @@
-Number of rows in initial data: 21,079,612,671
+# of rows in musicbrainz: 2,251,598
+# of rows in musicbrainz after mapping: 490,765
+# of rows in initial data: 21,079,612,671
+# of duplicate rows removed: 2,693,595,546,370
+# of rows with group artist removed (1st round): 418,484,663
+# of rows with sparse timestamp removed: 46
+# of rows with non-person artist removed (2nd round): 14,916,770,985
+# of rows with null artist gender removed: 84,980,097
+# of rows with non-applicable artist gender removed: 0
+# of rows in final mlhd data: 5,501,128,151
