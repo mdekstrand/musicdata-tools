@@ -54,3 +54,33 @@ stages:
       hash: md5
       md5: 0ddbd0a73f94261c2b80b4b6c66e4ab8
       size: 201553795
+  prep-mlhd:
+    cmd: python prep.py
+    deps:
+    - path: data/mlhd/
+      hash: md5
+      md5: 6bfe198aa971abe8f62524190a0b9170.dir
+      size: 141306342264
+      nfiles: 1233
+    - path: data/mlhd_ids.parquet
+      hash: md5
+      md5: 0ddbd0a73f94261c2b80b4b6c66e4ab8
+      size: 201553795
+    - path: data/musicbrainz.db
+      hash: md5
+      md5: 215df73d559d91bb04c5d965fe25a673
+      size: 1055404032
+    - path: musicdata/layout.py
+      hash: md5
+      md5: 95f0e77f860147cd977efcb62f99c3e1
+      size: 170
+    - path: musicdata/mlhd_prep.py
+      hash: md5
+      md5: 32225b36ca3bcdc558f64f3973883fb8
+      size: 5938
+    outs:
+    - path: data/mlhdv2
+      hash: md5
+      md5: 32c644f93274da0ee48fc609afdc68d7.dir
+      size: 52707736189
+      nfiles: 256
