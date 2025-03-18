@@ -31,14 +31,14 @@ stages:
     outs:
     - data/mlhdv2
 
-  # agg-prep-mlhd:
-  #   cmd: python aggprep.py
-  #   deps:
-  #   - data/mlhdv2
-  #   - musicdata/mlhd_prep_agg.py
-  #   - musicdata/layout.py
-  #   outs:
-  #   - data/solo-artist-count
+  agg-prep-mlhd:
+    cmd: python aggprep.py
+    deps:
+    - data/mlhdv2
+    - musicdata/mlhd_prep_agg.py
+    - musicdata/layout.py
+    outs:
+    - data/solo-artist-count
 
   # generate_stats:
   #   cmd: python datanalysis/summarizestats.py

@@ -12,6 +12,7 @@ new_mlhd_path = data_dir / "solo-artist-count"
 new_mlhd_path.mkdir(parents=True, exist_ok=True)
 
 conn = duckdb.connect(config=duck_options())
+conn.execute("SET enable_progress_bar = true;")
 
 _log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def process():
     conn.execute(f"""
     create temp table mlhd as
     select 
-        user_id, artist_id, count(*),
+        user_id, artist_id, count(*) as count,
         min(timestamp) as first_time,
         max(timestamp) as last_time
     from read_parquet('{mlhd_path}/*.parquet')
@@ -31,7 +32,7 @@ def process():
     _log.info("writing aggregated mlhd to parquet")
     conn.execute(f"""
           copy (select * from mlhd) 
-          TO '{new_mlhd_path}/.parquet' (COMPRESSION zstd);
+          TO '{new_mlhd_path}/chunk.parquet' (COMPRESSION zstd);
      """)
 
  

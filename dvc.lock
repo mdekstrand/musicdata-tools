@@ -33,8 +33,8 @@ stages:
       size: 170
     - path: musicdata/mlhd.py
       hash: md5
-      md5: 725e51067f3ae663a58de67bef4ca711
-      size: 10941
+      md5: c70320f1891bd831a70bffe2cb434e4c
+      size: 10942
     - path: musicdata/params.py
       hash: md5
       md5: eb430f047fd1aa7ae785112dee906353
@@ -84,3 +84,25 @@ stages:
       md5: 32c644f93274da0ee48fc609afdc68d7.dir
       size: 52707736189
       nfiles: 256
+  agg-prep-mlhd:
+    cmd: python aggprep.py
+    deps:
+    - path: data/mlhdv2
+      hash: md5
+      md5: 32c644f93274da0ee48fc609afdc68d7.dir
+      size: 52707736189
+      nfiles: 256
+    - path: musicdata/layout.py
+      hash: md5
+      md5: 95f0e77f860147cd977efcb62f99c3e1
+      size: 170
+    - path: musicdata/mlhd_prep_agg.py
+      hash: md5
+      md5: 12ee8d4c31bf5d95658692e76b8ff328
+      size: 991
+    outs:
+    - path: data/solo-artist-count
+      hash: md5
+      md5: 41fc28e6a1da818680618e9da4a67d77.dir
+      size: 2834985625
+      nfiles: 1
