@@ -37,8 +37,13 @@ def memory_limit(fraction=0.5, max_gb=96) -> int:
 
 
 def duck_options(mem_fraction=0.5, mem_max_gb=96) -> dict:
+    """
+    Create DuckDB options for limiting memory and computation use.  The memory
+    is limited to ``mem_fraction`` of the available memory, with a max of
+    ``mem_max_gb`` (see :func:`memory_limit`).
+    """
     num_cores = os.cpu_count()
-    num_threads = 8
+    num_threads = min(num_cores, 8)
 
     mem = memory_limit(mem_fraction, mem_max_gb)
 
