@@ -19,7 +19,7 @@ from humanize import naturalsize
 from manylog import LogListener, init_worker_logging
 from progress_api import make_progress
 
-from memory_limits import duck_options
+from musicdata.resources import duck_options
 
 from .layout import data_dir, mlhd_src_dir
 from .params import id_ranges

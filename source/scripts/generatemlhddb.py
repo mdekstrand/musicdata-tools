@@ -1,16 +1,19 @@
-import duckdb
 import glob
 import os
-from memory_limits import duck_options
 
-mlhd_path = '../../data/mlhd/*/*.parquet'
-musicbrainz_path = '../../data/musicbrainz.db'
-final_mlhd_path = '../../data/mlhd.db'
+import duckdb
+
+from musicdata.resources import duck_options
+
+mlhd_path = "../../data/mlhd/*/*.parquet"
+musicbrainz_path = "../../data/musicbrainz.db"
+final_mlhd_path = "../../data/mlhd.db"
 
 mlhd_conn = duckdb.connect(final_mlhd_path, config=duck_options())
 
+
 def import_mlhd_db():
-    #create mlhd_plays table in mlhd database
+    # create mlhd_plays table in mlhd database
     parquet_unfold = glob.glob(mlhd_path)
     mlhd_conn.execute(f"""
         CREATE TABLE IF NOT EXISTS mlhd_plays AS

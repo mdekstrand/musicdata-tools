@@ -1,7 +1,9 @@
-import duckdb
 import os
+
+import duckdb
 import pandas as pd
-from memory_limits import duck_options
+
+from musicdata.resources import duck_options
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # mlhd_path = os.path.join(current_dir, "../data/mlhd/*/*.parquet")
@@ -18,14 +20,14 @@ brainz_conn = duckdb.connect(musicbrainz_path, config=duck_options())
 # extract artist gender distribution as play count and unique user count for each gender
 gender_count_query = f"""
 COPY (
-    SELECT 
+    SELECT
         a.gender AS gender,
-        COUNT(user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users, 
+        COUNT(user_id) AS n_plays,
+        COUNT(DISTINCT mlhd.user_id) AS n_users,
         COUNT(DISTINCT mlhd.artist_id) AS unique_count
-    FROM 
+    FROM
         (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     GROUP BY gender
@@ -39,16 +41,16 @@ print("Gender count saved")
 # extract artist gender distribution in active user's interactions
 gender_count_active = f"""
 COPY (
-    SELECT 
+    SELECT
         a.gender AS gender,
-        COUNT(user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users, 
-        COUNT(DISTINCT mlhd.artist_id) AS unique_count 
-    FROM 
+        COUNT(user_id) AS n_plays,
+        COUNT(DISTINCT mlhd.user_id) AS n_users,
+        COUNT(DISTINCT mlhd.artist_id) AS unique_count
+    FROM
         (
-        SELECT UNNEST(artist_ids) AS artist_id, user_id 
+        SELECT UNNEST(artist_ids) AS artist_id, user_id
         FROM read_parquet('{mlhd_path}')) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     WHERE mlhd.user_id IN (
@@ -65,14 +67,14 @@ COPY (
 brainz_conn.execute(gender_count_active)
 print("Artist gender count for active users saved")
 
-# extract number of unique users and plays for each release 
+# extract number of unique users and plays for each release
 release_count_query = f"""
-COPY ( 
-    SELECT 
-           release_id, 
+COPY (
+    SELECT
+           release_id,
            COUNT(user_id) AS n_plays,
-           COUNT(DISTINCT user_id) AS n_users 
-    FROM 
+           COUNT(DISTINCT user_id) AS n_users
+    FROM
            read_parquet('{mlhd_path}')
     GROUP BY release_id
     ORDER BY n_plays DESC
@@ -84,14 +86,14 @@ print("Number of users and plays for each release saved")
 # extract type data
 type_count_query = f"""
 COPY (
-    SELECT 
+    SELECT
         a.type AS type,
-        COUNT(mlhd.user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users,  
+        COUNT(mlhd.user_id) AS n_plays,
+        COUNT(DISTINCT mlhd.user_id) AS n_users,
         COUNT(DISTINCT mlhd.artist_id) AS unique_count
-    FROM 
+    FROM
         (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     GROUP BY type
@@ -104,18 +106,18 @@ print("Type count saved")
 
 # extract genre data
 genre_count_query = f"""COPY(
-SELECT 
+SELECT
      g.genre_name,
-     COUNT(mlhd.user_id) AS n_plays,  
-     COUNT(DISTINCT mlhd.user_id) AS n_users  
-FROM 
+     COUNT(mlhd.user_id) AS n_plays,
+     COUNT(DISTINCT mlhd.user_id) AS n_users
+FROM
      (SELECT rec_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-LEFT JOIN 
-    (SELECT 
+LEFT JOIN
+    (SELECT
         rec_id,
         UNNEST(json_extract(artist_credit,'$[*].artist.genres[*].name')) AS genre_name
     FROM mb_recording) g
-USING (rec_id)     
+USING (rec_id)
 GROUP BY genre_name
 ORDER BY n_plays DESC
 )TO '{stat_path}/genre_count.parquet' (COMPRESSION zstd);"""
@@ -126,13 +128,13 @@ print("Genre data saved")
 # extract artist data
 artist_count_query = f"""
 COPY (
-    SELECT 
+    SELECT
         mlhd.artist_id,
-        COUNT(mlhd.user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users  
-    FROM 
+        COUNT(mlhd.user_id) AS n_plays,
+        COUNT(DISTINCT mlhd.user_id) AS n_users
+    FROM
         (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     GROUP BY mlhd.artist_id
@@ -145,23 +147,23 @@ print("Artist count saved")
 
 # extract number of plays of each user & unique user,rec pairs
 play_count_query = f"""COPY(
-SELECT user_id, 
+SELECT user_id,
 COUNT(rec_id) as play_count,
 COUNT(DISTINCT rec_id) as unique_play_count
-FROM read_parquet('{mlhd_path}') 
+FROM read_parquet('{mlhd_path}')
 GROUP BY user_id
 )TO '{stat_path}/play_count.parquet' (COMPRESSION zstd);"""
 
 conn.execute(play_count_query)
 print("Number of plays for each user saved")
 
-# extract number of plays for each track 
+# extract number of plays for each track
 track_count_query = f"""
-COPY ( 
-    SELECT 
-           rec_id, 
-           COUNT(user_id) AS n_plays 
-    FROM 
+COPY (
+    SELECT
+           rec_id,
+           COUNT(user_id) AS n_plays
+    FROM
            read_parquet('{mlhd_path}')
     GROUP BY rec_id
     ORDER BY n_plays DESC
@@ -173,16 +175,16 @@ print("Number of plays for each track saved")
 # count unique number of each entity in mlhd
 unique_count_query = f"""
 COPY (
-    SELECT 
-        COUNT(DISTINCT rec_id) AS n_tracks,  
-        COUNT(DISTINCT artist_id) AS n_artists,  
-        COUNT(DISTINCT release_id) AS n_releases, 
-        COUNT(DISTINCT user_id) AS n_users  
+    SELECT
+        COUNT(DISTINCT rec_id) AS n_tracks,
+        COUNT(DISTINCT artist_id) AS n_artists,
+        COUNT(DISTINCT release_id) AS n_releases,
+        COUNT(DISTINCT user_id) AS n_users
     FROM (
-        SELECT 
-            rec_id, 
-            UNNEST(artist_ids) AS artist_id, 
-            release_id, 
+        SELECT
+            rec_id,
+            UNNEST(artist_ids) AS artist_id,
+            release_id,
             user_id
         FROM read_parquet('{mlhd_path}')
     ) AS unnested_data
@@ -193,17 +195,17 @@ COPY (
 conn.execute(unique_count_query)
 print("Unique counts saved")
 
-# extract artist gender distribution based on first artist 
+# extract artist gender distribution based on first artist
 gender_count_fartist_query = f"""
 COPY (
-    SELECT 
+    SELECT
         a.gender AS gender,
-        COUNT(user_id) AS n_plays,  
-        COUNT(DISTINCT mlhd.user_id) AS n_users, 
+        COUNT(user_id) AS n_plays,
+        COUNT(DISTINCT mlhd.user_id) AS n_users,
         COUNT(DISTINCT mlhd.artist_id) AS unique_count
-    FROM 
+    FROM
         (SELECT artist_ids[1] AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     GROUP BY gender
@@ -216,17 +218,17 @@ print("Gender count based on first artist saved")
 
 gender_avg_unique_users = f"""
 COPY (
-    SELECT 
+    SELECT
         artist_user_counts.gender AS gender,
         AVG(unique_users) AS avg_unique_users
     FROM (
-        SELECT 
+        SELECT
             mlhd.artist_id,
             a.gender,
             COUNT(DISTINCT mlhd.user_id) AS unique_users
-        FROM 
+        FROM
             (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-        LEFT JOIN 
+        LEFT JOIN
             mb_artist a
         USING (artist_id)
         GROUP BY mlhd.artist_id, a.gender
@@ -240,13 +242,13 @@ print("Average # unique users for each gender saved")
 
 artist_unique_users = f"""
 COPY (
-      SELECT 
+      SELECT
         mlhd.artist_id,
         a.gender,
         COUNT(DISTINCT mlhd.user_id) AS unique_users
-    FROM 
+    FROM
         (SELECT UNNEST(artist_ids) AS artist_id, user_id FROM read_parquet('{mlhd_path}')) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     GROUP BY mlhd.artist_id, a.gender
@@ -259,20 +261,20 @@ print("# unique users for each artist saved")
 # average # unique users based on first artists
 fartist_avg_unique_users = f"""
 COPY (
-    SELECT 
+    SELECT
         artist_user_counts.gender AS gender,
         AVG(unique_users) AS avg_unique_users
     FROM (
-        SELECT 
+        SELECT
             mlhd.artist_id,
             a.gender,
             COUNT(DISTINCT mlhd.user_id) AS unique_users
-        FROM 
-            (SELECT UNNEST(artist_ids) AS artist_id, user_id 
+        FROM
+            (SELECT UNNEST(artist_ids) AS artist_id, user_id
             FROM read_parquet('{mlhd_path}')
             WHERE array_length(artist_ids) = 1
             ) mlhd
-        LEFT JOIN 
+        LEFT JOIN
             mb_artist a
         USING (artist_id)
         GROUP BY mlhd.artist_id, a.gender
@@ -286,16 +288,16 @@ print("Average # unique users for each gender saved")
 
 fartist_unique_users = f"""
 COPY (
-      SELECT 
+      SELECT
         mlhd.artist_id,
         a.gender,
         COUNT(DISTINCT mlhd.user_id) AS unique_users
-    FROM 
-        (SELECT UNNEST(artist_ids) AS artist_id, user_id 
+    FROM
+        (SELECT UNNEST(artist_ids) AS artist_id, user_id
         FROM read_parquet('{mlhd_path}')
-        WHERE array_length(artist_ids) = 1 
+        WHERE array_length(artist_ids) = 1
         ) mlhd
-    LEFT JOIN 
+    LEFT JOIN
         mb_artist a
     USING (artist_id)
     GROUP BY mlhd.artist_id, a.gender
@@ -307,7 +309,7 @@ print("# unique users for each artist saved")
 
 time_dist = f"""
 COPY (
-SELECT 
+SELECT
     EXTRACT(YEAR FROM to_timestamp(timestamp)) AS year,
     EXTRACT(MONTH FROM to_timestamp(timestamp)) AS month,
     MIN(CAST(to_timestamp(timestamp) AS date)) AS start_date,
@@ -331,4 +333,3 @@ print("distribution over time is saved")
 # """
 # conn.execute(duplicate_rows_count)
 # print("duplicate count is saved")
-

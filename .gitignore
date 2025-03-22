@@ -3,6 +3,9 @@ __pycache__
 *.pyo
 *.wal
 .ipynb_checkpoints/
+dist/
+build/
+*.egg-info/
 
 *.log
 perf_data*/
