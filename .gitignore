@@ -2,6 +2,8 @@ __pycache__
 *.pyc
 *.pyo
 *.wal
+/dist/
+/build/
 .ipynb_checkpoints/
 
 *.log
