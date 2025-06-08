@@ -2,9 +2,10 @@ __pycache__
 *.pyc
 *.pyo
 *.wal
-/dist/
-/build/
 .ipynb_checkpoints/
+dist/
+build/
+*.egg-info/
 
 *.log
 perf_data*/
@@ -17,3 +18,6 @@ perf_data*/
 # pixi environments
 .pixi
 *.egg-info
+
+.tmp/
+datanalysis/outputs

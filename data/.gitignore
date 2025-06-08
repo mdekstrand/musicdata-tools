@@ -1,6 +1,11 @@
 /musicbrainz.db
+/mlhd.db
 /mlhd/
 /mlhd
 /rec-id-stats.parquet
 /release-id-stats.parquet
 /user-id-stats.parquet
+/mlhd_ids.parquet
+/mlhdv2
+/solo-artist-count
+/prep_log.txt

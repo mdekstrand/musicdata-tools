@@ -10,8 +10,42 @@ stages:
     - data/musicbrainz.db
 
   import-mlhd:
-    cmd: python ingest.py --mlhd
+    cmd: python ingest.py --mlhd --use-mapping
     deps:
     - source/mlhdplus
+    - musicdata/mlhd.py
+    - musicdata/layout.py
+    - musicdata/params.py
     outs:
     - data/mlhd
+    - data/mlhd_ids.parquet
+
+  prep-mlhd:
+    cmd: python prep.py
+    deps:
+    - data/mlhd/
+    - data/musicbrainz.db
+    - data/mlhd_ids.parquet
+    - musicdata/mlhd_prep.py
+    - musicdata/layout.py
+    outs:
+    - data/mlhdv2
+
+  agg-prep-mlhd:
+    cmd: python aggprep.py
+    deps:
+    - data/mlhdv2
+    - musicdata/mlhd_prep_agg.py
+    - musicdata/layout.py
+    outs:
+    - data/solo-artist-count
+
+  # generate_stats:
+  #   cmd: python datanalysis/summarizestats.py
+  #   deps:
+  #     - datanalysis/summarizestats.py
+  #     - data/musicbrainz.db
+  #     - data/mlhd/
+  #   outs:
+  #     - datanalysis/outputs/
+
